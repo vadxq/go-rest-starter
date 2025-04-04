@@ -183,7 +183,7 @@ API文档使用Swagger自动生成，可通过访问 `/swagger` 路径查看。
 
 1. Fork 项目
 2. 创建特性分支 (`git checkout -b feature/amazing-feature`)
-3. 提交更改 (`git commit -m 'Add some amazing feature'`)
+3. 提交更改 (`git commit -m 'feat: some amazing feature'`)
 4. 推送到分支 (`git push origin feature/amazing-feature`)
 5. 创建 Pull Request
 
