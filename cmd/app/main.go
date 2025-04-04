@@ -1,5 +1,26 @@
 package main
 
+// @title Go-Rest-Starter API
+// @version 1.0
+// @description Go-Rest-Starter(https://github.com/vadxq/go-rest-starter) RESTful API服务，基于Go Chi、GORM、PostgreSQL和Redis
+// @termsOfService http://swagger.io/terms/
+
+// @contact.name API Support
+// @contact.url https://blog.vadxq.com
+// @contact.email dxl@vadxq.com
+
+// @license.name MIT
+// @license.url https://opensource.org/licenses/MIT
+
+// @host localhost:7001
+// @BasePath /
+// @schemes http https
+
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description 输入格式: Bearer {token}
+
 import (
 	"context"
 	"fmt"
@@ -17,12 +38,14 @@ import (
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
 
-	v1 "github.com/vadxq/go-rest-starter/api/v1"
+	"github.com/vadxq/go-rest-starter/api"
 	"github.com/vadxq/go-rest-starter/internal/app/config"
 	"github.com/vadxq/go-rest-starter/internal/app/db"
 	"github.com/vadxq/go-rest-starter/internal/app/handlers"
 	"github.com/vadxq/go-rest-starter/internal/app/repository"
 	"github.com/vadxq/go-rest-starter/internal/app/services"
+	"github.com/vadxq/go-rest-starter/internal/pkg/cache"
+	"github.com/vadxq/go-rest-starter/internal/pkg/jwt"
 )
 
 func main() {
@@ -54,18 +77,28 @@ func main() {
 		log.Fatal().Err(err).Msg("初始化Redis失败")
 	}
 	defer redisClient.Close()
+	
+	// 初始化缓存
+	cacheInstance, err := initCache(redisClient, cfg)
+	if err != nil {
+		log.Fatal().Err(err).Msg("初始化缓存失败")
+	}
 
 	// 初始化验证器
 	validate := validator.New()
 
 	// 初始化依赖
-	deps := initDependencies(database, redisClient, validate)
+	deps := initDependencies(database, redisClient, validate, cfg, cacheInstance)
 
 	// 创建路由
 	router := chi.NewRouter()
 
 	// 设置API路由
-	v1.SetupRoutes(router, deps.userHandler)
+	api.Setup(router, api.RouterConfig{
+		UserHandler: deps.userHandler,
+		AuthHandler: deps.authHandler,
+		JWTSecret:   deps.jwtSecret,
+	})
 
 	// 创建HTTP服务器
 	server := &http.Server{
@@ -110,6 +143,27 @@ func main() {
 	// 等待服务器完全关闭
 	<-serverCtx.Done()
 	log.Info().Msg("服务器已关闭")
+}
+
+// 初始化缓存
+func initCache(redisClient *redis.Client, cfg *config.AppConfig) (cache.Cache, error) {
+	cacheOpts := cache.Options{
+		DefaultExpiration: 10 * time.Minute,
+		CleanupInterval:   5 * time.Minute,
+	}
+	
+	// 如果Redis可用，则使用Redis作为缓存
+	if redisClient != nil {
+		cacheOpts.RedisAddress = fmt.Sprintf("%s:%d", cfg.Redis.Host, cfg.Redis.Port)
+		cacheOpts.RedisPassword = cfg.Redis.Password
+		cacheOpts.RedisDB = cfg.Redis.DB
+		
+		log.Info().Msg("使用Redis作为缓存存储")
+	} else {
+		log.Info().Msg("使用内存作为缓存存储")
+	}
+	
+	return cache.NewCache(cacheOpts)
 }
 
 // 设置日志配置
@@ -159,21 +213,35 @@ func setupLogger(configPath string) {
 // 依赖注入结构
 type dependencies struct {
 	userHandler *handlers.UserHandler
+	authHandler *handlers.AuthHandler
+	jwtSecret   string
 }
 
 // 初始化所有依赖
-func initDependencies(db *gorm.DB, rdb *redis.Client, validate *validator.Validate) *dependencies {
+func initDependencies(db *gorm.DB, rdb *redis.Client, validate *validator.Validate, config *config.AppConfig, cacheInstance cache.Cache) *dependencies {
 	// 初始化仓库（Repository 层）
-	userRepo := repository.NewUserRepository(db) // 数据访问层，处理数据库操作
+	userRepo := repository.NewUserRepository(db)
+
+	// 创建JWT配置
+	jwtConfig := &jwt.Config{
+		Secret:          config.JWT.Secret,
+		AccessTokenExp:  config.JWT.AccessTokenExp,
+		RefreshTokenExp: config.JWT.RefreshTokenExp,
+		Issuer:          config.JWT.Issuer,
+	}
 
 	// 初始化服务（Service 层）
-	userService := services.NewUserService(userRepo, validate, db) // 业务逻辑层，包含事务管理
+	userService := services.NewUserService(userRepo, validate, db, cacheInstance)
+	authService := services.NewAuthService(userRepo, validate, db, jwtConfig, cacheInstance)
 
 	// 初始化处理器（Handler 层）
-	userHandler := handlers.NewUserHandler(userService, log.Logger, validate) // HTTP 请求处理层
+	userHandler := handlers.NewUserHandler(userService, log.Logger, validate)
+	authHandler := handlers.NewAuthHandler(authService, log.Logger, validate)
 
 	return &dependencies{
-		userHandler: userHandler, // 最终注入到路由层
+		userHandler: userHandler,
+		authHandler: authHandler,
+		jwtSecret:   config.JWT.Secret,
 	}
 }
 

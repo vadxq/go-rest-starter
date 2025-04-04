@@ -13,6 +13,7 @@ type AppConfig struct {
 	Database DatabaseConfig `mapstructure:"database"`
 	Redis    RedisConfig    `mapstructure:"redis"`
 	Log      LogConfig      `mapstructure:"log"`
+	JWT      JWTConfig      `mapstructure:"jwt"`
 }
 
 // Config 应用配置结构
@@ -56,6 +57,14 @@ type LogConfig struct {
 	Console bool   `mapstructure:"console"` // 是否同时输出到控制台
 }
 
+// JWTConfig JWT配置
+type JWTConfig struct {
+	Secret            string        `mapstructure:"secret"`
+	AccessTokenExp    time.Duration `mapstructure:"access_token_exp"`
+	RefreshTokenExp   time.Duration `mapstructure:"refresh_token_exp"`
+	Issuer            string        `mapstructure:"issuer"`
+}
+
 // LoadConfig 加载配置
 func LoadConfig(path string) (*AppConfig, error) {
 	// 初始化 viper
@@ -78,7 +87,39 @@ func LoadConfig(path string) (*AppConfig, error) {
 		return nil, fmt.Errorf("解析配置失败: %w", err)
 	}
 
+	// 设置默认值
+	setDefaults(&config.App)
+
 	return &config.App, nil
+}
+
+// 设置默认值
+func setDefaults(config *AppConfig) {
+	// 服务器默认值
+	if config.Server.Port == 0 {
+		config.Server.Port = 8080
+	}
+	if config.Server.ReadTimeout == 0 {
+		config.Server.ReadTimeout = 10 * time.Second
+	}
+	if config.Server.WriteTimeout == 0 {
+		config.Server.WriteTimeout = 10 * time.Second
+	}
+
+	// JWT默认值
+	if config.JWT.AccessTokenExp == 0 {
+		config.JWT.AccessTokenExp = 24 * time.Hour
+	}
+	if config.JWT.RefreshTokenExp == 0 {
+		config.JWT.RefreshTokenExp = 7 * 24 * time.Hour
+	}
+	if config.JWT.Issuer == "" {
+		config.JWT.Issuer = "go-rest-starter"
+	}
+	// 必须有Secret，否则不安全
+	if config.JWT.Secret == "" {
+		config.JWT.Secret = "default-secret-key-please-change-in-production"
+	}
 }
 
 // GetDSN 获取数据库连接字符串

@@ -30,3 +30,7 @@ go.work.sum
 configs/config.yaml
 
 logs/*
+
+logs
+
+swag-docs

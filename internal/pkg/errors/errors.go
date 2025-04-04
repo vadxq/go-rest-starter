@@ -12,12 +12,11 @@ type AppError interface {
 
 // NotFoundError 资源未找到错误
 type NotFoundError struct {
-	Resource string
-	ID       string
+	Message string
 }
 
 func (e *NotFoundError) Error() string {
-	return fmt.Sprintf("%s with ID %s not found", e.Resource, e.ID)
+	return e.Message
 }
 
 func (e *NotFoundError) Code() int {
@@ -76,11 +75,10 @@ func (e *InternalError) Code() int {
 	return 500
 }
 
-// NewNotFoundError 创建资源未找到错误
-func NewNotFoundError(resource, id string) *NotFoundError {
+// NewNotFoundError 创建资源未找到错误，支持单个消息参数
+func NewNotFoundError(message string) *NotFoundError {
 	return &NotFoundError{
-		Resource: resource,
-		ID:       id,
+		Message: message,
 	}
 }
 

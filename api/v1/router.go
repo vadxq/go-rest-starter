@@ -12,7 +12,7 @@ import (
 )
 
 // SetupRoutes 设置API路由
-func SetupRoutes(r chi.Router, userHandler *handlers.UserHandler) {
+func SetupRoutes(r chi.Router, userHandler *handlers.UserHandler, authHandler *handlers.AuthHandler) {
 	// 全局中间件
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
@@ -23,6 +23,10 @@ func SetupRoutes(r chi.Router, userHandler *handlers.UserHandler) {
 	// 自定义中间件
 	r.Use(custommiddleware.TraceID)
 	r.Use(custommiddleware.LoggingMiddleware)
+	r.Use(custommiddleware.CORSMiddleware) // 添加CORS中间件，确保API可以被跨域访问
+
+	// 设置Swagger路由
+	SetupSwaggerRoutes(r)
 
 	// 健康检查
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -32,16 +36,13 @@ func SetupRoutes(r chi.Router, userHandler *handlers.UserHandler) {
 
 	// API v1 路由
 	r.Route("/api/v1", func(r chi.Router) {
-		// 用户相关路由
-		r.Route("/users", func(r chi.Router) {
-			r.Post("/", userHandler.CreateUser)
-
-			// 用户ID相关路由
-			r.Route("/{id}", func(r chi.Router) {
-				r.Get("/", userHandler.GetUser)
-				r.Put("/", userHandler.UpdateUser)
-				r.Delete("/", userHandler.DeleteUser)
-			})
+		// 认证路由 - 不需要认证
+		r.Route("/auth", func(r chi.Router) {
+			r.Post("/login", authHandler.Login)
+			r.Post("/refresh", authHandler.RefreshToken)
 		})
+
+		// 用户相关路由
+		SetupUserRoutes(r, userHandler)
 	})
 }

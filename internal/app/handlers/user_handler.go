@@ -2,8 +2,8 @@ package handlers
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
@@ -11,7 +11,6 @@ import (
 
 	"github.com/vadxq/go-rest-starter/api/v1/dto"
 	"github.com/vadxq/go-rest-starter/internal/app/services"
-	apperrors "github.com/vadxq/go-rest-starter/internal/pkg/errors"
 )
 
 // UserHandler 处理用户相关的 HTTP 请求
@@ -41,7 +40,8 @@ func NewUserHandler(us services.UserService, logger zerolog.Logger, v *validator
 // @Failure 400 {object} dto.ErrorResponse
 // @Failure 404 {object} dto.ErrorResponse
 // @Failure 500 {object} dto.ErrorResponse
-// @Router /users/{id} [get]
+// @Router /api/v1/users/{id} [get]
+// @Security BearerAuth
 func (h *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 	userID := chi.URLParam(r, "id")
 	if userID == "" {
@@ -78,7 +78,8 @@ func (h *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 // @Success 201 {object} dto.UserResponse
 // @Failure 400 {object} dto.ErrorResponse
 // @Failure 500 {object} dto.ErrorResponse
-// @Router /users [post]
+// @Router /api/v1/users [post]
+// @Security BearerAuth
 func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	var input dto.CreateUserInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
@@ -122,7 +123,8 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 // @Failure 400 {object} dto.ErrorResponse
 // @Failure 404 {object} dto.ErrorResponse
 // @Failure 500 {object} dto.ErrorResponse
-// @Router /users/{id} [put]
+// @Router /api/v1/users/{id} [put]
+// @Security BearerAuth
 func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	userID := chi.URLParam(r, "id")
 	if userID == "" {
@@ -162,11 +164,12 @@ func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 // @Accept json
 // @Produce json
 // @Param id path string true "用户ID"
-// @Success 204 {object} dto.ErrorResponse
+// @Success 204 {object} nil
 // @Failure 400 {object} dto.ErrorResponse
 // @Failure 404 {object} dto.ErrorResponse
 // @Failure 500 {object} dto.ErrorResponse
-// @Router /users/{id} [delete]
+// @Router /api/v1/users/{id} [delete]
+// @Security BearerAuth
 func (h *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	userID := chi.URLParam(r, "id")
 	if userID == "" {
@@ -181,6 +184,66 @@ func (h *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.renderJSON(w, r, nil, http.StatusNoContent)
+}
+
+// ListUsers 获取用户列表
+// @Summary 获取用户列表
+// @Description 分页获取用户列表
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param page query int false "页码，默认为1" default(1)
+// @Param page_size query int false "每页大小，默认为10" default(10)
+// @Success 200 {object} dto.ListResponse{data=[]dto.UserResponse}
+// @Failure 500 {object} dto.ErrorResponse
+// @Router /api/v1/users [get]
+// @Security BearerAuth
+func (h *UserHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
+	// 获取分页参数
+	page, err := strconv.Atoi(r.URL.Query().Get("page"))
+	if err != nil || page < 1 {
+		page = 1
+	}
+	
+	pageSize, err := strconv.Atoi(r.URL.Query().Get("page_size"))
+	if err != nil || pageSize < 1 {
+		pageSize = 10
+	}
+	
+	// 限制每页最大数量
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	
+	// 调用Service层获取用户列表
+	users, total, err := h.userService.ListUsers(r.Context(), page, pageSize)
+	if err != nil {
+		h.handleServiceError(w, r, err)
+		return
+	}
+	
+	// 转换为DTO
+	usersResponse := make([]dto.UserResponse, 0, len(users))
+	for _, user := range users {
+		usersResponse = append(usersResponse, dto.UserResponse{
+			ID:        user.ID,
+			Name:      user.Name,
+			Email:     user.Email,
+			Role:      user.Role,
+			CreatedAt: user.CreatedAt,
+			UpdatedAt: user.UpdatedAt,
+		})
+	}
+	
+	// 构建分页响应
+	response := dto.ListResponse{
+		Data:  usersResponse,
+		Page:  page,
+		Size:  pageSize,
+		Total: total,
+	}
+	
+	h.renderJSON(w, r, response, http.StatusOK)
 }
 
 // renderError 渲染错误响应
@@ -215,10 +278,5 @@ func (h *UserHandler) renderJSON(w http.ResponseWriter, r *http.Request, data in
 
 // handleServiceError 处理服务错误
 func (h *UserHandler) handleServiceError(w http.ResponseWriter, r *http.Request, err error) {
-	var appErr apperrors.AppError
-	if errors.As(err, &appErr) {
-		h.renderError(w, r, appErr.Error(), appErr.Code())
-	} else {
-		h.renderError(w, r, "服务器错误", http.StatusInternalServerError)
-	}
+	handleError(h.logger, w, r, err)
 }
