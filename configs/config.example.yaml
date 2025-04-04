@@ -25,5 +25,11 @@ app:
 
   log:
     level: debug
-    file: logs/app.log
+    file: "logs/app.log"
     console: true
+  
+  jwt:
+    secret: "your-secret-key-change-this-in-production"
+    access_token_exp: 24h
+    refresh_token_exp: 168h
+    issuer: "go-rest-starter"

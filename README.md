@@ -105,7 +105,7 @@ go mod download
 
 ### 访问Swagger文档
 
-启动服务后，访问 http://localhost:8080/swagger 查看API文档。
+启动服务后，访问 http://localhost:7001/swagger 查看API文档。
 
 ## 构建与部署
 
