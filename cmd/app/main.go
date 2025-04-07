@@ -70,7 +70,7 @@ func main() {
 	}
 
 	// 启动HTTP服务器
-	serverErrCh := startServer(app.Router, cfg.Server.Port, cfg.Server.ReadTimeout, cfg.Server.WriteTimeout)
+	serverErrCh := startServer(app, cfg.Server.Port, cfg.Server.ReadTimeout, cfg.Server.WriteTimeout)
 
 	// 处理优雅关闭
 	shutdownApp(app, serverErrCh)
@@ -84,6 +84,7 @@ type App struct {
 	Cache     cache.Cache
 	Validator *validator.Validate
 	Deps      *injection.Dependencies
+	Server    *http.Server
 }
 
 // 初始化应用
@@ -152,16 +153,19 @@ func initApp(cfg *config.AppConfig) (*App, error) {
 }
 
 // 启动HTTP服务器
-func startServer(router *chi.Mux, port int, readTimeout, writeTimeout time.Duration) <-chan error {
+func startServer(app *App, port int, readTimeout, writeTimeout time.Duration) <-chan error {
 	errCh := make(chan error, 1)
 	
 	// 创建HTTP服务器
 	server := &http.Server{
 		Addr:         fmt.Sprintf(":%d", port),
-		Handler:      router,
+		Handler:      app.Router,
 		ReadTimeout:  readTimeout,
 		WriteTimeout: writeTimeout,
 	}
+	
+	// 保存服务器实例
+	app.Server = server
 
 	// 启动服务器
 	go func() {
@@ -191,6 +195,27 @@ func shutdownApp(app *App, serverErrCh <-chan error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	
+	// 优雅关闭HTTP服务器
+	if app.Server != nil {
+		log.Info().Msg("关闭HTTP服务器...")
+		if err := app.Server.Shutdown(ctx); err != nil {
+			log.Error().Err(err).Msg("关闭HTTP服务器失败")
+		}
+	}
+	
+	// 关闭数据库连接
+	if app.DB != nil {
+		log.Info().Msg("关闭数据库连接...")
+		sqlDB, err := app.DB.DB()
+		if err != nil {
+			log.Error().Err(err).Msg("获取底层SQL DB失败")
+		} else {
+			if err := sqlDB.Close(); err != nil {
+				log.Error().Err(err).Msg("关闭数据库连接失败")
+			}
+		}
+	}
+	
 	// 关闭Redis连接
 	if app.Redis != nil {
 		log.Info().Msg("关闭Redis连接...")
@@ -199,7 +224,6 @@ func shutdownApp(app *App, serverErrCh <-chan error) {
 		}
 	}
 	
-	// 关闭服务器
 	log.Info().Msg("应用关闭完成")
 }
 

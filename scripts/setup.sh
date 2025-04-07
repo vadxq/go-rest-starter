@@ -26,7 +26,7 @@ version: '3'
 
 services:
   postgres:
-    image: postgres:14-alpine
+    image: postgres:17-alpine
     container_name: go-rest-postgres
     environment:
       POSTGRES_USER: postgres

@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
 	"runtime"
 	"time"
@@ -11,33 +10,31 @@ import (
 
 	"github.com/vadxq/go-rest-starter/api/v1/dto"
 	"github.com/vadxq/go-rest-starter/internal/app/middleware"
-	apperrors "github.com/vadxq/go-rest-starter/internal/pkg/errors"
+	"github.com/vadxq/go-rest-starter/internal/pkg/errors"
 )
 
-// ResponseWriter 统一响应写入器
+// ResponseWriter 响应写入器，用于统一处理HTTP响应
 type ResponseWriter struct {
 	Logger zerolog.Logger
 }
 
-// NewResponseWriter 创建响应写入器
+// NewResponseWriter 创建一个新的响应写入器
 func NewResponseWriter(logger zerolog.Logger) *ResponseWriter {
-	return &ResponseWriter{
-		Logger: logger,
-	}
+	return &ResponseWriter{Logger: logger}
 }
 
 // Error 写入错误响应
 func (rw *ResponseWriter) Error(w http.ResponseWriter, r *http.Request, err error) {
-	statusCode := http.StatusInternalServerError
-	message := "服务器内部错误"
-	errorCode := "internal_error"
+	// 获取错误信息
+	var statusCode int = http.StatusInternalServerError
+	var message string = "服务器内部错误"
+	var errorCode string = "internal_server_error"
 	
-	// 获取错误源位置
+	// 获取堆栈信息
 	_, file, line, _ := runtime.Caller(1)
 	
-	// 处理应用自定义错误
-	var appErr apperrors.AppError
-	if errors.As(err, &appErr) {
+	// 处理自定义错误
+	if appErr, ok := err.(errors.AppError); ok {
 		statusCode = appErr.Code()
 		message = appErr.Error()
 		errorCode = appErr.ErrorCode()
@@ -62,7 +59,8 @@ func (rw *ResponseWriter) Error(w http.ResponseWriter, r *http.Request, err erro
 		Err(err)
 	
 	// 添加用户信息（如果存在）
-	if userID := middleware.GetUserID(r.Context()); userID != 0 {
+	userID, ok := middleware.GetUserID(r.Context())
+	if ok && userID != 0 {
 		logEvent = logEvent.Uint("user_id", userID)
 	}
 	
@@ -101,7 +99,8 @@ func (rw *ResponseWriter) Success(w http.ResponseWriter, r *http.Request, data i
 		Int("status", statusCode)
 	
 	// 添加用户信息（如果存在）
-	if userID := middleware.GetUserID(r.Context()); userID != 0 {
+	userID, ok := middleware.GetUserID(r.Context())
+	if ok && userID != 0 {
 		logEvent = logEvent.Uint("user_id", userID)
 	}
 	

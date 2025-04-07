@@ -35,8 +35,8 @@ func GetTraceID(ctx context.Context) string {
 	return ""
 }
 
-// GetUserID 从上下文中获取用户ID
-func GetUserID(ctx context.Context) uint {
+// GetUserIDFromContext 从上下文中获取用户ID（使用contextKey方式获取）
+func GetUserIDFromContext(ctx context.Context) uint {
 	if ctx == nil {
 		return 0
 	}
@@ -142,7 +142,8 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 			Str("trace_id", GetTraceID(r.Context()))
 		
 		// 添加用户信息（如果有）
-		if userID := GetUserID(r.Context()); userID != 0 {
+		userID, ok := GetUserID(r.Context())
+		if ok && userID != 0 {
 			logEvent = logEvent.Uint("user_id", userID)
 		}
 		
