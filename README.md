@@ -28,6 +28,7 @@ project-root/
 │   │   ├── config/               # 业务配置
 │   │   ├── db/                   # 数据连接相关
 │   │   ├── handlers/             # 业务handler
+│   │   ├── injection/            # 依赖注入
 │   │   ├── middleware/           # 中间件
 │   │   ├── models/               # 数据模型
 │   │   ├── repository/           # 数据访问层
@@ -124,7 +125,7 @@ docker build -t go-rest-starter -f deploy/docker/Dockerfile .
 ### 运行容器
 
 ```bash
-docker run -p 8080:8080 go-rest-starter
+docker run -p 7001:7001 go-rest-starter
 ```
 
 ## 项目结构说明
@@ -142,6 +143,14 @@ docker run -p 8080:8080 go-rest-starter
 
 - 处理参数提取和基本验证
 - 不包含业务逻辑，只负责协调
+
+### 依赖注入层 (internal/app/injection/)
+
+负责依赖注入的实现，包括依赖的注册和解析。
+
+- 提供依赖注入容器
+- 支持依赖的自动注入
+- 简化依赖管理
 
 ### 服务层 (internal/app/services/)
 

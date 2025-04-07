@@ -41,11 +41,8 @@ import (
 	"github.com/vadxq/go-rest-starter/api"
 	"github.com/vadxq/go-rest-starter/internal/app/config"
 	"github.com/vadxq/go-rest-starter/internal/app/db"
-	"github.com/vadxq/go-rest-starter/internal/app/handlers"
-	"github.com/vadxq/go-rest-starter/internal/app/repository"
-	"github.com/vadxq/go-rest-starter/internal/app/services"
+	"github.com/vadxq/go-rest-starter/internal/app/injection"
 	"github.com/vadxq/go-rest-starter/internal/pkg/cache"
-	"github.com/vadxq/go-rest-starter/internal/pkg/jwt"
 )
 
 func main() {
@@ -53,10 +50,10 @@ func main() {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 
 	// 配置日志输出
-	setupLogger(getConfigPath())
+	configPath := getConfigPath()
+	setupLogger(configPath)
 
 	// 加载配置
-	configPath := getConfigPath()
 	cfg, err := config.LoadConfig(configPath)
 	if err != nil {
 		log.Fatal().Err(err).Msg("加载配置失败")
@@ -64,85 +61,146 @@ func main() {
 
 	// 设置日志级别
 	setLogLevel(cfg.Log.Level)
+	log.Info().Str("config_path", configPath).Msg("配置加载完成")
 
+	// 初始化应用
+	app, err := initApp(cfg)
+	if err != nil {
+		log.Fatal().Err(err).Msg("初始化应用失败")
+	}
+
+	// 启动HTTP服务器
+	serverErrCh := startServer(app.Router, cfg.Server.Port, cfg.Server.ReadTimeout, cfg.Server.WriteTimeout)
+
+	// 处理优雅关闭
+	shutdownApp(app, serverErrCh)
+}
+
+// App 应用结构体
+type App struct {
+	DB        *gorm.DB
+	Redis     *redis.Client
+	Router    *chi.Mux
+	Cache     cache.Cache
+	Validator *validator.Validate
+	Deps      *injection.Dependencies
+}
+
+// 初始化应用
+func initApp(cfg *config.AppConfig) (*App, error) {
+	log.Info().Msg("开始初始化应用...")
+	
 	// 初始化数据库连接
+	log.Info().Msg("连接数据库...")
 	database, err := db.InitDB(&cfg.Database)
 	if err != nil {
-		log.Fatal().Err(err).Msg("初始化数据库失败")
+		return nil, fmt.Errorf("初始化数据库失败: %w", err)
 	}
+	log.Info().Msg("数据库连接成功")
 
 	// 初始化Redis连接
+	log.Info().Msg("连接Redis...")
 	redisClient, err := db.InitRedis(&cfg.Redis)
 	if err != nil {
-		log.Fatal().Err(err).Msg("初始化Redis失败")
+		return nil, fmt.Errorf("初始化Redis失败: %w", err)
 	}
-	defer redisClient.Close()
+	log.Info().Msg("Redis连接成功")
 	
 	// 初始化缓存
+	log.Info().Msg("初始化缓存...")
 	cacheInstance, err := initCache(redisClient, cfg)
 	if err != nil {
-		log.Fatal().Err(err).Msg("初始化缓存失败")
+		return nil, fmt.Errorf("初始化缓存失败: %w", err)
 	}
+	log.Info().Msg("缓存初始化成功")
 
 	// 初始化验证器
 	validate := validator.New()
 
-	// 初始化依赖
-	deps := initDependencies(database, redisClient, validate, cfg, cacheInstance)
+	// 初始化依赖注入系统
+	log.Info().Msg("初始化依赖注入系统...")
+	deps := injection.NewDependencies(
+		database,       // 数据库连接
+		redisClient,    // Redis客户端 
+		validate,       // 验证器
+		cfg,            // 应用配置
+		cacheInstance,  // 缓存实例
+		log.Logger,     // 日志记录器
+	)
+	log.Info().Msg("依赖注入系统初始化完成")
 
-	// 创建路由
+	// 创建HTTP路由器
 	router := chi.NewRouter()
 
 	// 设置API路由
+	log.Info().Msg("配置API路由...")
 	api.Setup(router, api.RouterConfig{
-		UserHandler: deps.userHandler,
-		AuthHandler: deps.authHandler,
-		JWTSecret:   deps.jwtSecret,
+		UserHandler: deps.Handlers.UserHandler, // 用户处理器
+		AuthHandler: deps.Handlers.AuthHandler, // 认证处理器
+		JWTSecret:   deps.Config.JWT.Secret,    // JWT密钥
 	})
+	log.Info().Msg("API路由配置完成")
+	
+	return &App{
+		DB:        database,
+		Redis:     redisClient,
+		Router:    router,
+		Cache:     cacheInstance,
+		Validator: validate,
+		Deps:      deps,
+	}, nil
+}
 
+// 启动HTTP服务器
+func startServer(router *chi.Mux, port int, readTimeout, writeTimeout time.Duration) <-chan error {
+	errCh := make(chan error, 1)
+	
 	// 创建HTTP服务器
 	server := &http.Server{
-		Addr:         fmt.Sprintf(":%d", cfg.Server.Port),
+		Addr:         fmt.Sprintf(":%d", port),
 		Handler:      router,
-		ReadTimeout:  cfg.Server.ReadTimeout,
-		WriteTimeout: cfg.Server.WriteTimeout,
+		ReadTimeout:  readTimeout,
+		WriteTimeout: writeTimeout,
 	}
 
 	// 启动服务器
-	serverCtx, serverStopCtx := context.WithCancel(context.Background())
-
-	// 优雅关闭
 	go func() {
-		sigChan := make(chan os.Signal, 1)
-		signal.Notify(sigChan, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
-		<-sigChan
-
-		shutdownCtx, shutdownCancel := context.WithTimeout(serverCtx, 30*time.Second)
-		defer shutdownCancel()
-
-		go func() {
-			<-shutdownCtx.Done()
-			if shutdownCtx.Err() == context.DeadlineExceeded {
-				log.Fatal().Msg("优雅关闭超时，强制退出")
-			}
-		}()
-
-		log.Info().Msg("正在关闭服务器...")
-		if err := server.Shutdown(shutdownCtx); err != nil {
-			log.Fatal().Err(err).Msg("服务器关闭失败")
+		log.Info().Int("port", port).Msg("HTTP服务器启动")
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			errCh <- fmt.Errorf("HTTP服务器错误: %w", err)
 		}
-		serverStopCtx()
 	}()
+	
+	return errCh
+}
 
-	// 启动服务器
-	log.Info().Int("port", cfg.Server.Port).Msg("服务器启动")
-	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatal().Err(err).Msg("服务器启动失败")
+// 处理应用优雅关闭
+func shutdownApp(app *App, serverErrCh <-chan error) {
+	// 创建信号通道
+	signalCh := make(chan os.Signal, 1)
+	signal.Notify(signalCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+	
+	select {
+	case err := <-serverErrCh:
+		log.Error().Err(err).Msg("服务器错误")
+	case sig := <-signalCh:
+		log.Info().Str("signal", sig.String()).Msg("接收到系统信号，开始优雅关闭")
 	}
-
-	// 等待服务器完全关闭
-	<-serverCtx.Done()
-	log.Info().Msg("服务器已关闭")
+	
+	// 设置超时上下文
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	
+	// 关闭Redis连接
+	if app.Redis != nil {
+		log.Info().Msg("关闭Redis连接...")
+		if err := app.Redis.Close(); err != nil {
+			log.Error().Err(err).Msg("关闭Redis连接失败")
+		}
+	}
+	
+	// 关闭服务器
+	log.Info().Msg("应用关闭完成")
 }
 
 // 初始化缓存
@@ -207,41 +265,6 @@ func setupLogger(configPath string) {
 	} else {
 		// 默认输出到控制台
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stdout})
-	}
-}
-
-// 依赖注入结构
-type dependencies struct {
-	userHandler *handlers.UserHandler
-	authHandler *handlers.AuthHandler
-	jwtSecret   string
-}
-
-// 初始化所有依赖
-func initDependencies(db *gorm.DB, rdb *redis.Client, validate *validator.Validate, config *config.AppConfig, cacheInstance cache.Cache) *dependencies {
-	// 初始化仓库（Repository 层）
-	userRepo := repository.NewUserRepository(db)
-
-	// 创建JWT配置
-	jwtConfig := &jwt.Config{
-		Secret:          config.JWT.Secret,
-		AccessTokenExp:  config.JWT.AccessTokenExp,
-		RefreshTokenExp: config.JWT.RefreshTokenExp,
-		Issuer:          config.JWT.Issuer,
-	}
-
-	// 初始化服务（Service 层）
-	userService := services.NewUserService(userRepo, validate, db, cacheInstance)
-	authService := services.NewAuthService(userRepo, validate, db, jwtConfig, cacheInstance)
-
-	// 初始化处理器（Handler 层）
-	userHandler := handlers.NewUserHandler(userService, log.Logger, validate)
-	authHandler := handlers.NewAuthHandler(authService, log.Logger, validate)
-
-	return &dependencies{
-		userHandler: userHandler,
-		authHandler: authHandler,
-		jwtSecret:   config.JWT.Secret,
 	}
 }
 

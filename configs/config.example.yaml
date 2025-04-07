@@ -1,35 +1,35 @@
 app:
   server:
-    port: 7001
-    timeout: 10s
-    read_timeout: 5s
-    write_timeout: 10s
+    port: 7001           # 服务端口号
+    timeout: 30s         # 全局超时设置
+    read_timeout: 15s    # 读取超时
+    write_timeout: 15s   # 写入超时
 
   database:
-    driver: postgres
-    host: localhost
-    port: 5432
-    username: postgres
-    password: postgres
-    dbname: restapi
-    sslmode: disable
-    max_open_conns: 10
-    max_idle_conns: 5
-    conn_max_lifetime: 1h
+    driver: postgres      # 数据库类型
+    host: localhost       # 数据库主机地址
+    port: 5432            # 数据库端口
+    username: postgres    # 数据库用户名
+    password: "****"      # 数据库密码 - 生产环境建议使用环境变量：${DB_PASSWORD}
+    dbname: myapp         # 数据库名称
+    sslmode: disable      # SSL模式
+    max_open_conns: 20    # 最大连接数
+    max_idle_conns: 5     # 最大空闲连接数
+    conn_max_lifetime: 1h # 连接最大生命周期
 
   redis:
-    host: localhost
-    port: 6379
-    password: ""
-    db: 0
+    host: localhost       # Redis主机地址
+    port: 6379            # Redis端口
+    password: ""          # Redis密码 - 如需密码请使用环境变量：${REDIS_PASSWORD}
+    db: 0                 # Redis数据库索引
 
   log:
-    level: debug
-    file: "logs/app.log"
-    console: true
-  
+    level: debug          # 日志级别: debug, info, warn, error
+    file: "logs/app.log"  # 日志文件路径
+    console: true         # 是否同时输出到控制台
+
   jwt:
-    secret: "your-secret-key-change-this-in-production"
-    access_token_exp: 24h
-    refresh_token_exp: 168h
-    issuer: "go-rest-starter"
+    secret: "change-this-to-a-secure-key" # JWT密钥 - 生产环境务必修改并使用环境变量：${JWT_SECRET}
+    access_token_exp: 24h                 # 访问令牌过期时间
+    refresh_token_exp: 168h               # 刷新令牌过期时间
+    issuer: "go-rest-starter"             # 令牌发行者
