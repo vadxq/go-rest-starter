@@ -2,140 +2,105 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
-	"runtime"
-	"time"
 
-	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 
-	"github.com/vadxq/go-rest-starter/api/v1/dto"
-	"github.com/vadxq/go-rest-starter/internal/app/middleware"
-	"github.com/vadxq/go-rest-starter/internal/pkg/errors"
+	apperrors "github.com/vadxq/go-rest-starter/internal/pkg/errors"
 )
 
-// ResponseWriter 响应写入器，用于统一处理HTTP响应
-type ResponseWriter struct {
-	Logger zerolog.Logger
+// Response 标准API响应结构
+type Response struct {
+	Success bool        `json:"success"`
+	Data    interface{} `json:"data,omitempty"`
+	Error   *ErrorInfo  `json:"error,omitempty"`
 }
 
-// NewResponseWriter 创建一个新的响应写入器
-func NewResponseWriter(logger zerolog.Logger) *ResponseWriter {
-	return &ResponseWriter{Logger: logger}
+// ErrorInfo 错误信息结构
+type ErrorInfo struct {
+	Type    string   `json:"type"`
+	Message string   `json:"message"`
+	Fields  []string `json:"fields,omitempty"`
 }
 
-// Error 写入错误响应
-func (rw *ResponseWriter) Error(w http.ResponseWriter, r *http.Request, err error) {
-	// 获取错误信息
-	var statusCode int = http.StatusInternalServerError
-	var message string = "服务器内部错误"
-	var errorCode string = "internal_server_error"
-	
-	// 获取堆栈信息
-	_, file, line, _ := runtime.Caller(1)
-	
-	// 处理自定义错误
-	if appErr, ok := err.(errors.AppError); ok {
-		statusCode = appErr.Code()
-		message = appErr.Error()
-		errorCode = appErr.ErrorCode()
+// RespondJSON 发送JSON响应
+func RespondJSON(w http.ResponseWriter, status int, data interface{}) {
+	response := Response{
+		Success: status >= 200 && status < 300,
+		Data:    data,
 	}
-	
-	// 获取请求信息
-	traceID := middleware.GetTraceID(r.Context())
-	requestMethod := r.Method
-	requestPath := r.URL.Path
-	clientIP := r.RemoteAddr
-	
-	// 记录错误日志
-	logEvent := rw.Logger.Error().
-		Str("trace_id", traceID).
-		Str("method", requestMethod).
-		Str("path", requestPath).
-		Str("client_ip", clientIP).
-		Str("error_code", errorCode).
-		Int("status", statusCode).
-		Str("error_file", file).
-		Int("error_line", line).
-		Err(err)
-	
-	// 添加用户信息（如果存在）
-	userID, ok := middleware.GetUserID(r.Context())
-	if ok && userID != 0 {
-		logEvent = logEvent.Uint("user_id", userID)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Error().Err(err).Msg("响应JSON序列化失败")
+		http.Error(w, "内部服务器错误", http.StatusInternalServerError)
 	}
-	
-	// 输出日志
-	logEvent.Msg("请求处理错误")
-	
+}
+
+// RespondError 发送错误响应
+func RespondError(w http.ResponseWriter, err error) {
+	var appErr *apperrors.Error
+
+	// 尝试将err转换为应用错误类型
+	if !errors.As(err, &appErr) {
+		// 如果不是应用错误，则将其包装为内部错误
+		appErr = apperrors.InternalError("内部服务器错误", err)
+	}
+
 	// 构建错误响应
-	errorResponse := dto.ErrorResponse{
-		Code:      statusCode,
-		Message:   message,
-		ErrorCode: errorCode,
-		TraceID:   traceID,
-		Timestamp: time.Now().Unix(),
+	response := Response{
+		Success: false,
+		Error: &ErrorInfo{
+			Type:    string(appErr.Type),
+			Message: appErr.Message,
+			Fields:  appErr.Fields,
+		},
 	}
-	
+
+	// 获取HTTP状态码
+	status := appErr.StatusCode()
+
+	// 记录错误
+	if status >= 500 {
+		log.Error().Err(appErr).Str("type", string(appErr.Type)).Msg(appErr.Message)
+	} else {
+		log.Debug().Err(appErr).Str("type", string(appErr.Type)).Msg(appErr.Message)
+	}
+
 	// 发送响应
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(errorResponse)
+	w.WriteHeader(status)
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Error().Err(err).Msg("错误响应JSON序列化失败")
+		http.Error(w, "内部服务器错误", http.StatusInternalServerError)
+	}
 }
 
-// Success 写入成功响应
-func (rw *ResponseWriter) Success(w http.ResponseWriter, r *http.Request, data interface{}, statusCode int) {
-	if statusCode == 0 {
-		statusCode = http.StatusOK
+// DecodeJSON 从请求体解析JSON数据
+func DecodeJSON(r *http.Request, v interface{}) error {
+	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
+		return apperrors.BadRequestError("无效的JSON数据", err)
 	}
-	
-	// 获取请求信息
-	traceID := middleware.GetTraceID(r.Context())
-	
-	// 记录成功日志
-	logEvent := rw.Logger.Info().
-		Str("trace_id", traceID).
-		Str("method", r.Method).
-		Str("path", r.URL.Path).
-		Int("status", statusCode)
-	
-	// 添加用户信息（如果存在）
-	userID, ok := middleware.GetUserID(r.Context())
-	if ok && userID != 0 {
-		logEvent = logEvent.Uint("user_id", userID)
-	}
-	
-	// 输出日志
-	logEvent.Msg("请求处理成功")
-	
-	// 构建成功响应
-	successResponse := dto.Response{
-		Code:      statusCode,
-		Data:      data,
-		TraceID:   traceID,
-		Timestamp: time.Now().Unix(),
-	}
-	
-	// 发送响应
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(successResponse)
+	return nil
 }
 
-// NoContent 返回无内容响应
-func (rw *ResponseWriter) NoContent(w http.ResponseWriter, r *http.Request) {
-	// 记录日志
-	rw.Logger.Info().
-		Str("trace_id", middleware.GetTraceID(r.Context())).
-		Str("method", r.Method).
-		Str("path", r.URL.Path).
-		Int("status", http.StatusNoContent).
-		Msg("请求处理成功(无内容)")
-	
-	w.WriteHeader(http.StatusNoContent)
-}
+// BindJSON 从请求体解析JSON并验证
+func BindJSON(r *http.Request, v interface{}, validate func(interface{}) error) error {
+	// 解析JSON
+	if err := DecodeJSON(r, v); err != nil {
+		return err
+	}
 
-// 向后兼容的处理方法
-func handleError(logger zerolog.Logger, w http.ResponseWriter, r *http.Request, err error) {
-	writer := ResponseWriter{Logger: logger}
-	writer.Error(w, r, err)
-} 
+	// 验证数据
+	if validate != nil {
+		if err := validate(v); err != nil {
+			return apperrors.ValidationError("数据验证失败", err)
+		}
+	}
+
+	return nil
+}

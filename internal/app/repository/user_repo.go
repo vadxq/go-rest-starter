@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"fmt"
 
 	"gorm.io/gorm"
 
@@ -36,7 +35,7 @@ func NewUserRepository(db *gorm.DB) UserRepository {
 func (r *userRepository) Create(ctx context.Context, tx *gorm.DB, user *models.User) error {
 	result := tx.WithContext(ctx).Create(user)
 	if result.Error != nil {
-		return fmt.Errorf("创建用户失败: %w", result.Error)
+		return apperrors.InternalError("创建用户失败", result.Error)
 	}
 	return nil
 }
@@ -47,9 +46,9 @@ func (r *userRepository) GetByID(ctx context.Context, id string) (*models.User, 
 	result := r.db.WithContext(ctx).First(&user, id)
 	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
-			return nil, apperrors.NewNotFoundError("用户不存在")
+			return nil, apperrors.NotFoundError("用户", result.Error)
 		}
-		return nil, fmt.Errorf("获取用户失败: %w", result.Error)
+		return nil, apperrors.InternalError("获取用户失败", result.Error)
 	}
 	return &user, nil
 }
@@ -60,9 +59,9 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*models.
 	result := r.db.WithContext(ctx).Where("email = ?", email).First(&user)
 	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
-			return nil, apperrors.NewNotFoundError("用户不存在")
+			return nil, apperrors.NotFoundError("用户", result.Error)
 		}
-		return nil, fmt.Errorf("获取用户失败: %w", result.Error)
+		return nil, apperrors.InternalError("获取用户失败", result.Error)
 	}
 	return &user, nil
 }
@@ -72,7 +71,7 @@ func (r *userRepository) ExistsByEmail(ctx context.Context, email string) (bool,
 	var count int64
 	result := r.db.WithContext(ctx).Model(&models.User{}).Where("email = ?", email).Count(&count)
 	if result.Error != nil {
-		return false, fmt.Errorf("检查邮箱是否存在失败: %w", result.Error)
+		return false, apperrors.InternalError("检查邮箱是否存在失败", result.Error)
 	}
 	return count > 0, nil
 }
@@ -81,7 +80,7 @@ func (r *userRepository) ExistsByEmail(ctx context.Context, email string) (bool,
 func (r *userRepository) Update(ctx context.Context, tx *gorm.DB, user *models.User) error {
 	result := tx.WithContext(ctx).Save(user)
 	if result.Error != nil {
-		return fmt.Errorf("更新用户失败: %w", result.Error)
+		return apperrors.InternalError("更新用户失败", result.Error)
 	}
 	return nil
 }
@@ -90,10 +89,10 @@ func (r *userRepository) Update(ctx context.Context, tx *gorm.DB, user *models.U
 func (r *userRepository) Delete(ctx context.Context, tx *gorm.DB, id uint) error {
 	result := tx.WithContext(ctx).Delete(&models.User{}, id)
 	if result.Error != nil {
-		return fmt.Errorf("删除用户失败: %w", result.Error)
+		return apperrors.InternalError("删除用户失败", result.Error)
 	}
 	if result.RowsAffected == 0 {
-		return apperrors.NewNotFoundError(fmt.Sprintf("用户(ID:%d)不存在", id))
+		return apperrors.NotFoundError("用户", nil)
 	}
 	return nil
 }
@@ -106,19 +105,19 @@ func (r *userRepository) List(ctx context.Context, page, pageSize int) ([]*model
 	if pageSize < 1 || pageSize > 100 {
 		pageSize = 10
 	}
-	
+
 	offset := (page - 1) * pageSize
-	
+
 	var users []*models.User
 	result := r.db.WithContext(ctx).Offset(offset).Limit(pageSize).Find(&users)
 	if result.Error != nil {
-		return nil, 0, fmt.Errorf("获取用户列表失败: %w", result.Error)
+		return nil, 0, apperrors.InternalError("获取用户列表失败", result.Error)
 	}
-	
+
 	var total int64
 	if err := r.db.WithContext(ctx).Model(&models.User{}).Count(&total).Error; err != nil {
-		return nil, 0, fmt.Errorf("获取用户总数失败: %w", err)
+		return nil, 0, apperrors.InternalError("获取用户总数失败", err)
 	}
-	
+
 	return users, total, nil
 }

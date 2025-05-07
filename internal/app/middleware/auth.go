@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
-	
-	"github.com/vadxq/go-rest-starter/api/v1/dto"
+
+	apperrors "github.com/vadxq/go-rest-starter/internal/pkg/errors"
 	jwtpkg "github.com/vadxq/go-rest-starter/internal/pkg/jwt"
 )
 
@@ -20,7 +20,7 @@ type RoleKey struct{}
 
 // JWTConfig JWT中间件配置
 type JWTConfig struct {
-	Secret     string   // JWT密钥
+	Secret       string   // JWT密钥
 	ExcludePaths []string // 排除的路径（不需要认证）
 }
 
@@ -46,14 +46,14 @@ func JWTAuth(config *JWTConfig) func(http.Handler) http.Handler {
 			// 从请求头中获取令牌
 			authHeader := r.Header.Get("Authorization")
 			if authHeader == "" {
-				renderError(w, "缺少认证令牌", http.StatusUnauthorized)
+				renderUnauthorized(w, "缺少认证令牌")
 				return
 			}
 
 			// 提取令牌
 			tokenParts := strings.Split(authHeader, " ")
 			if len(tokenParts) != 2 || tokenParts[0] != "Bearer" {
-				renderError(w, "认证令牌格式无效", http.StatusUnauthorized)
+				renderUnauthorized(w, "认证令牌格式无效")
 				return
 			}
 			tokenString := tokenParts[1]
@@ -62,13 +62,20 @@ func JWTAuth(config *JWTConfig) func(http.Handler) http.Handler {
 			claims, err := jwtpkg.ParseToken(tokenString, config.Secret)
 			if err != nil {
 				log.Error().Err(err).Str("token", tokenString).Msg("解析令牌失败")
-				renderError(w, "无效的认证令牌", http.StatusUnauthorized)
+				renderUnauthorized(w, "无效的认证令牌")
 				return
 			}
 
 			// 将用户ID和角色添加到上下文
 			ctx := context.WithValue(r.Context(), UserIDKey{}, claims.UserID)
 			ctx = context.WithValue(ctx, RoleKey{}, claims.Role)
+
+			// 如果有请求上下文，也添加用户信息到请求上下文
+			reqCtx := GetRequestContext(ctx)
+			if reqCtx != nil {
+				reqCtx.UserID = claims.UserID
+				reqCtx.UserRole = claims.Role
+			}
 
 			// 继续处理请求
 			next.ServeHTTP(w, r.WithContext(ctx))
@@ -94,7 +101,7 @@ func RequireRole(role string) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			userRole, ok := GetRole(r.Context())
 			if !ok || userRole != role {
-				renderError(w, "没有权限访问", http.StatusForbidden)
+				renderForbidden(w, "没有权限访问")
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -102,15 +109,46 @@ func RequireRole(role string) func(http.Handler) http.Handler {
 	}
 }
 
-// 渲染错误响应
-func renderError(w http.ResponseWriter, message string, statusCode int) {
+// 统一响应结构
+type authResponse struct {
+	Success bool       `json:"success"`
+	Error   *errorInfo `json:"error,omitempty"`
+}
+
+// 错误信息结构
+type errorInfo struct {
+	Type    string `json:"type"`
+	Message string `json:"message"`
+}
+
+// 渲染未授权错误响应
+func renderUnauthorized(w http.ResponseWriter, message string) {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-	
-	response := dto.ErrorResponse{
-		Code:    statusCode,
-		Message: message,
+	w.WriteHeader(http.StatusUnauthorized)
+
+	response := authResponse{
+		Success: false,
+		Error: &errorInfo{
+			Type:    string(apperrors.ErrorTypeUnauthorized),
+			Message: message,
+		},
 	}
-	
+
 	json.NewEncoder(w).Encode(response)
-} 
+}
+
+// 渲染权限不足错误响应
+func renderForbidden(w http.ResponseWriter, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusForbidden)
+
+	response := authResponse{
+		Success: false,
+		Error: &errorInfo{
+			Type:    string(apperrors.ErrorTypeForbidden),
+			Message: message,
+		},
+	}
+
+	json.NewEncoder(w).Encode(response)
+}

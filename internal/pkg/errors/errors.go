@@ -2,185 +2,172 @@ package errors
 
 import (
 	"fmt"
+	"net/http"
+	"runtime/debug"
+
+	"github.com/rs/zerolog/log"
 )
 
-// AppError 应用错误接口
-type AppError interface {
-	error
-	Code() int         // HTTP状态码
-	ErrorCode() string // 业务错误代码
-	WithContext(key string, value interface{}) AppError // 添加上下文信息
-	Context() map[string]interface{} // 获取上下文信息
+// ErrorType 是错误类型的枚举
+type ErrorType string
+
+// 预定义错误类型
+const (
+	// ErrorTypeValidation 验证错误
+	ErrorTypeValidation ErrorType = "VALIDATION_ERROR"
+	// ErrorTypeNotFound 资源不存在
+	ErrorTypeNotFound ErrorType = "NOT_FOUND"
+	// ErrorTypeUnauthorized 未授权
+	ErrorTypeUnauthorized ErrorType = "UNAUTHORIZED"
+	// ErrorTypeForbidden 禁止访问
+	ErrorTypeForbidden ErrorType = "FORBIDDEN"
+	// ErrorTypeInternal 内部服务器错误
+	ErrorTypeInternal ErrorType = "INTERNAL_ERROR"
+	// ErrorTypeBadRequest 错误的请求
+	ErrorTypeBadRequest ErrorType = "BAD_REQUEST"
+	// ErrorTypeConflict 资源冲突
+	ErrorTypeConflict ErrorType = "CONFLICT"
+)
+
+// Error 结构化错误
+type Error struct {
+	Type    ErrorType `json:"type"`
+	Message string    `json:"message"`
+	Err     error     `json:"-"`
+	Fields  []string  `json:"fields,omitempty"`
 }
 
-// 基础错误类型
-type baseError struct {
-	message   string                 // 错误消息
-	code      int                    // HTTP状态码
-	errorCode string                 // 业务错误代码
-	context   map[string]interface{} // 上下文信息
-}
-
-// Error 实现error接口
-func (e *baseError) Error() string {
-	return e.message
-}
-
-// Code 返回HTTP状态码
-func (e *baseError) Code() int {
-	return e.code
-}
-
-// ErrorCode 返回业务错误代码
-func (e *baseError) ErrorCode() string {
-	return e.errorCode
-}
-
-// WithContext 添加上下文信息
-func (e *baseError) WithContext(key string, value interface{}) AppError {
-	if e.context == nil {
-		e.context = make(map[string]interface{})
+// Error 实现标准error接口
+func (e *Error) Error() string {
+	if e.Err != nil {
+		return fmt.Sprintf("%s: %s: %v", e.Type, e.Message, e.Err)
 	}
-	e.context[key] = value
+	return fmt.Sprintf("%s: %s", e.Type, e.Message)
+}
+
+// Unwrap 实现errors.Unwrap接口
+func (e *Error) Unwrap() error {
+	return e.Err
+}
+
+// WithFields 添加错误字段
+func (e *Error) WithFields(fields ...string) *Error {
+	e.Fields = append(e.Fields, fields...)
 	return e
 }
 
-// Context 获取上下文信息
-func (e *baseError) Context() map[string]interface{} {
-	return e.context
-}
-
-// NotFoundError 资源未找到错误
-type NotFoundError struct {
-	baseError
-}
-
-// ValidationError 验证错误
-type ValidationError struct {
-	baseError
-}
-
-// UnauthorizedError 未授权错误
-type UnauthorizedError struct {
-	baseError
-}
-
-// ForbiddenError 禁止访问错误
-type ForbiddenError struct {
-	baseError
-}
-
-// InternalError 内部错误
-type InternalError struct {
-	baseError
-	err error // 原始错误
-}
-
-// Error 重写Error方法以包含原始错误
-func (e *InternalError) Error() string {
-	if e.err != nil {
-		return fmt.Sprintf("%s: %v", e.message, e.err)
-	}
-	return e.message
-}
-
-// Unwrap 返回原始错误
-func (e *InternalError) Unwrap() error {
-	return e.err
-}
-
-// NewNotFoundError 创建资源未找到错误
-func NewNotFoundError(message string) *NotFoundError {
-	return &NotFoundError{
-		baseError: baseError{
-			message:   message,
-			code:      404,
-			errorCode: "resource_not_found",
-			context:   make(map[string]interface{}),
-		},
+// StatusCode 返回对应的HTTP状态码
+func (e *Error) StatusCode() int {
+	switch e.Type {
+	case ErrorTypeValidation:
+		return http.StatusBadRequest
+	case ErrorTypeNotFound:
+		return http.StatusNotFound
+	case ErrorTypeUnauthorized:
+		return http.StatusUnauthorized
+	case ErrorTypeForbidden:
+		return http.StatusForbidden
+	case ErrorTypeInternal:
+		return http.StatusInternalServerError
+	case ErrorTypeBadRequest:
+		return http.StatusBadRequest
+	case ErrorTypeConflict:
+		return http.StatusConflict
+	default:
+		return http.StatusInternalServerError
 	}
 }
 
-// NewValidationError 创建验证错误
-func NewValidationError(message string) *ValidationError {
-	return &ValidationError{
-		baseError: baseError{
-			message:   message,
-			code:      400,
-			errorCode: "validation_failed",
-			context:   make(map[string]interface{}),
-		},
+// New 创建新的错误
+func New(errType ErrorType, message string, err error) *Error {
+	return &Error{
+		Type:    errType,
+		Message: message,
+		Err:     err,
 	}
 }
 
-// NewUnauthorizedError 创建未授权错误
-func NewUnauthorizedError(message string) *UnauthorizedError {
-	return &UnauthorizedError{
-		baseError: baseError{
-			message:   message,
-			code:      401,
-			errorCode: "unauthorized",
-			context:   make(map[string]interface{}),
-		},
-	}
+// ValidationError 创建验证错误
+func ValidationError(message string, err error) *Error {
+	return New(ErrorTypeValidation, message, err)
 }
 
-// NewForbiddenError 创建禁止访问错误
-func NewForbiddenError(message string) *ForbiddenError {
-	return &ForbiddenError{
-		baseError: baseError{
-			message:   message,
-			code:      403,
-			errorCode: "forbidden",
-			context:   make(map[string]interface{}),
-		},
-	}
+// NotFoundError 创建未找到错误
+func NotFoundError(entity string, err error) *Error {
+	return New(ErrorTypeNotFound, fmt.Sprintf("%s not found", entity), err)
 }
 
-// NewInternalError 创建内部错误
-func NewInternalError(err error) *InternalError {
-	message := "内部服务器错误"
-	if err != nil {
-		message = fmt.Sprintf("内部服务器错误: %v", err)
-	}
-	
-	return &InternalError{
-		baseError: baseError{
-			message:   message,
-			code:      500,
-			errorCode: "internal_server_error",
-			context:   make(map[string]interface{}),
-		},
-		err: err,
-	}
+// UnauthorizedError 创建未授权错误
+func UnauthorizedError(message string, err error) *Error {
+	return New(ErrorTypeUnauthorized, message, err)
 }
 
-// BadRequestError 创建请求参数错误
-func NewBadRequestError(message string) AppError {
-	return &baseError{
-		message:   message,
-		code:      400,
-		errorCode: "bad_request",
-		context:   make(map[string]interface{}),
-	}
+// ForbiddenError 创建禁止访问错误
+func ForbiddenError(message string, err error) *Error {
+	return New(ErrorTypeForbidden, message, err)
+}
+
+// InternalError 创建内部服务器错误
+func InternalError(message string, err error) *Error {
+	return New(ErrorTypeInternal, message, err)
+}
+
+// BadRequestError 创建错误请求错误
+func BadRequestError(message string, err error) *Error {
+	return New(ErrorTypeBadRequest, message, err)
 }
 
 // ConflictError 创建资源冲突错误
-func NewConflictError(message string) AppError {
-	return &baseError{
-		message:   message,
-		code:      409,
-		errorCode: "resource_conflict",
-		context:   make(map[string]interface{}),
+func ConflictError(message string, err error) *Error {
+	return New(ErrorTypeConflict, message, err)
+}
+
+// AsError 尝试将标准error转换为自定义Error类型
+func AsError(err error) *Error {
+	if err == nil {
+		return nil
+	}
+
+	// 如果err已经是*Error类型，则直接返回
+	if e, ok := err.(*Error); ok {
+		return e
+	}
+
+	// 否则包装为内部错误
+	return InternalError("unexpected error", err)
+}
+
+// RecoverPanic 用于从panic中恢复并记录错误
+// 可在goroutine中使用，例如：defer RecoverPanic("后台任务")
+func RecoverPanic(source string) {
+	if r := recover(); r != nil {
+		stackTrace := debug.Stack()
+
+		// 记录错误日志
+		log.Error().
+			Interface("error", r).
+			Str("source", source).
+			Bytes("stack_trace", stackTrace).
+			Msg("捕获到异常")
 	}
 }
 
-// ServiceUnavailableError 创建服务不可用错误
-func NewServiceUnavailableError(message string) AppError {
-	return &baseError{
-		message:   message,
-		code:      503,
-		errorCode: "service_unavailable",
-		context:   make(map[string]interface{}),
+// RecoverPanicWithCallback 从panic中恢复，并执行回调函数
+// 适用于需要在panic恢复后执行自定义操作的场景
+func RecoverPanicWithCallback(source string, callback func(err interface{}, stack []byte)) {
+	if r := recover(); r != nil {
+		stackTrace := debug.Stack()
+
+		// 记录错误日志
+		log.Error().
+			Interface("error", r).
+			Str("source", source).
+			Bytes("stack_trace", stackTrace).
+			Msg("捕获到异常")
+
+		// 执行回调
+		if callback != nil {
+			callback(r, stackTrace)
+		}
 	}
 }

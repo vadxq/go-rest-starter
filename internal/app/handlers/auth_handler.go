@@ -1,14 +1,15 @@
 package handlers
 
 import (
-	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/rs/zerolog"
 
 	"github.com/vadxq/go-rest-starter/api/v1/dto"
 	"github.com/vadxq/go-rest-starter/internal/app/services"
+	apperrors "github.com/vadxq/go-rest-starter/internal/pkg/errors"
 )
 
 // AuthHandler 处理认证相关的HTTP请求
@@ -34,30 +35,26 @@ func NewAuthHandler(as services.AuthService, logger zerolog.Logger, v *validator
 // @Accept json
 // @Produce json
 // @Param body body dto.LoginRequest true "登录请求体"
-// @Success 200 {object} dto.LoginResponse
-// @Failure 400 {object} dto.ErrorResponse
-// @Failure 401 {object} dto.ErrorResponse
-// @Failure 500 {object} dto.ErrorResponse
+// @Success 200 {object} Response{data=dto.LoginResponse}
+// @Failure 400,401,500 {object} Response{error=ErrorInfo}
 // @Router /api/v1/auth/login [post]
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req dto.LoginRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.renderError(w, r, "无效的请求体", http.StatusBadRequest)
-		return
-	}
 
-	if err := h.validator.Struct(req); err != nil {
-		h.renderError(w, r, "请求参数验证失败: "+err.Error(), http.StatusBadRequest)
+	if err := BindJSON(r, &req, func(v interface{}) error {
+		return h.validator.Struct(v)
+	}); err != nil {
+		RespondError(w, err)
 		return
 	}
 
 	response, err := h.authService.Login(r.Context(), req)
 	if err != nil {
-		h.handleServiceError(w, r, err)
+		RespondError(w, err)
 		return
 	}
 
-	h.renderJSON(w, r, response, http.StatusOK)
+	RespondJSON(w, http.StatusOK, response)
 }
 
 // RefreshToken 处理令牌刷新请求
@@ -67,64 +64,62 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 // @Accept json
 // @Produce json
 // @Param body body dto.RefreshTokenRequest true "刷新令牌请求体"
-// @Success 200 {object} dto.TokenResponse
-// @Failure 400 {object} dto.ErrorResponse
-// @Failure 401 {object} dto.ErrorResponse
-// @Failure 500 {object} dto.ErrorResponse
+// @Success 200 {object} Response{data=dto.TokenResponse}
+// @Failure 400,401,500 {object} Response{error=ErrorInfo}
 // @Router /api/v1/auth/refresh [post]
 func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 	var req dto.RefreshTokenRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.renderError(w, r, "无效的请求体", http.StatusBadRequest)
-		return
-	}
 
-	if err := h.validator.Struct(req); err != nil {
-		h.renderError(w, r, "请求参数验证失败: "+err.Error(), http.StatusBadRequest)
+	if err := BindJSON(r, &req, func(v interface{}) error {
+		return h.validator.Struct(v)
+	}); err != nil {
+		RespondError(w, err)
 		return
 	}
 
 	response, err := h.authService.RefreshToken(r.Context(), req.RefreshToken)
 	if err != nil {
-		h.handleServiceError(w, r, err)
+		RespondError(w, err)
 		return
 	}
 
-	h.renderJSON(w, r, response, http.StatusOK)
+	RespondJSON(w, http.StatusOK, response)
 }
 
-// 渲染错误响应
-func (h *AuthHandler) renderError(w http.ResponseWriter, r *http.Request, message string, statusCode int) {
-	h.logger.Error().
-		Str("method", r.Method).
-		Str("url", r.URL.String()).
-		Int("status_code", statusCode).
-		Msg(message)
-
-	response := dto.ErrorResponse{
-		Code:    statusCode,
-		Message: message,
+// Logout 处理用户登出请求
+// @Summary 用户登出
+// @Description 使当前用户的访问令牌失效
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Success 204 {object} nil
+// @Failure 401,500 {object} Response{error=ErrorInfo}
+// @Router /api/v1/auth/logout [post]
+// @Security BearerAuth
+func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	// 从Authorization头部获取访问令牌
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		RespondError(w, apperrors.UnauthorizedError("未提供授权令牌", nil))
+		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(response)
+	// 分离Bearer前缀和令牌
+	parts := strings.Split(authHeader, " ")
+	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+		RespondError(w, apperrors.UnauthorizedError("授权格式无效", nil))
+		return
+	}
+
+	accessToken := parts[1]
+
+	// 调用服务执行登出
+	err := h.authService.Logout(r.Context(), accessToken)
+	if err != nil {
+		RespondError(w, err)
+		return
+	}
+
+	// 成功登出返回204状态码
+	RespondJSON(w, http.StatusNoContent, nil)
 }
-
-// 渲染JSON响应
-func (h *AuthHandler) renderJSON(w http.ResponseWriter, r *http.Request, data interface{}, statusCode int) {
-	h.logger.Info().
-		Str("method", r.Method).
-		Str("url", r.URL.String()).
-		Int("status_code", statusCode).
-		Msg("响应成功")
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(data)
-}
-
-// 处理服务错误
-func (h *AuthHandler) handleServiceError(w http.ResponseWriter, r *http.Request, err error) {
-	handleError(h.logger, w, r, err)
-} 

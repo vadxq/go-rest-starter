@@ -26,6 +26,7 @@ go.work.sum
 *.local
 
 .cursorrules
+.cursor
 
 configs/config.yaml
 

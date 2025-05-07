@@ -21,10 +21,10 @@ tmp_dir = "tmp"
   stop_on_error = true
 
 [color]
-  app = "\x1b[38;5;46m"
+  app = "green"
   build = "yellow"
-  main = "\x1b[38;5;33m"
-  runner = "\x1b[38;5;44m"
+  main = "blue"
+  runner = "cyan"
 
 [log]
   main_only = false

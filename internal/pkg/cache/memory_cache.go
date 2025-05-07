@@ -11,7 +11,7 @@ import (
 var (
 	// ErrNotFound 表示键在缓存中不存在
 	ErrNotFound = errors.New("键不存在")
-	
+
 	// ErrExpired 表示缓存项已过期
 	ErrExpired = errors.New("缓存项已过期")
 )
@@ -42,13 +42,13 @@ func newMemoryCache(opts Options) (Cache, error) {
 	cache := &memoryCache{
 		defaultExpiration: opts.DefaultExpiration,
 	}
-	
+
 	// 如果设置了清理间隔，启动清理协程
 	if opts.CleanupInterval > 0 {
 		cache.janitor = newJanitor(opts.CleanupInterval)
 		cache.janitor.run(cache)
 	}
-	
+
 	return cache, nil
 }
 
@@ -58,37 +58,37 @@ func (c *memoryCache) Get(ctx context.Context, key string) ([]byte, error) {
 	if !ok {
 		return nil, ErrNotFound
 	}
-	
+
 	item, ok := value.(*item)
 	if !ok {
 		return nil, errors.New("无效的缓存项类型")
 	}
-	
+
 	if item.isExpired() {
 		c.items.Delete(key)
 		return nil, ErrExpired
 	}
-	
+
 	return item.value, nil
 }
 
 // 设置缓存
 func (c *memoryCache) Set(ctx context.Context, key string, value []byte, expiration time.Duration) error {
 	var exp int64
-	
+
 	if expiration == 0 {
 		expiration = c.defaultExpiration
 	}
-	
+
 	if expiration > 0 {
 		exp = time.Now().Add(expiration).UnixNano()
 	}
-	
+
 	c.items.Store(key, &item{
 		value:      value,
 		expiration: exp,
 	})
-	
+
 	return nil
 }
 
@@ -110,7 +110,7 @@ func (c *memoryCache) GetObject(ctx context.Context, key string, value interface
 	if err != nil {
 		return err
 	}
-	
+
 	return json.Unmarshal(data, value)
 }
 
@@ -120,7 +120,7 @@ func (c *memoryCache) SetObject(ctx context.Context, key string, value interface
 	if err != nil {
 		return err
 	}
-	
+
 	return c.Set(ctx, key, data, expiration)
 }
 
@@ -167,11 +167,11 @@ func (c *memoryCache) deleteExpired() {
 			c.items.Delete(key)
 			return true
 		}
-		
+
 		if item.isExpired() {
 			c.items.Delete(key)
 		}
-		
+
 		return true
 	})
-} 
+}

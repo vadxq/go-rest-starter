@@ -2,13 +2,15 @@ package middleware
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
+
+	apperrors "github.com/vadxq/go-rest-starter/internal/pkg/errors"
 )
 
 // 上下文键类型
@@ -16,139 +18,126 @@ type contextKey string
 
 const (
 	// 请求上下文键
-	traceIDKey   contextKey = "trace_id"    // 请求跟踪ID
-	userIDKey    contextKey = "user_id"     // 用户ID
-	userRoleKey  contextKey = "user_role"   // 用户角色
-	requestIDKey contextKey = "request_id"  // 请求ID
-	clientIPKey  contextKey = "client_ip"   // 客户端IP
-	startTimeKey contextKey = "start_time"  // 请求开始时间
+	reqContextKey contextKey = "request_context" // 请求上下文对象
 )
 
-// GetTraceID 从上下文中获取 TraceID
-func GetTraceID(ctx context.Context) string {
-	if ctx == nil {
-		return ""
-	}
-	if traceID, ok := ctx.Value(traceIDKey).(string); ok {
-		return traceID
-	}
-	return ""
+// ReqContext 请求上下文结构体
+type ReqContext struct {
+	TraceID    string    // 请求跟踪ID
+	RequestID  string    // 请求ID
+	UserID     uint      // 用户ID (如果已认证)
+	UserRole   string    // 用户角色 (如果已认证)
+	ClientIP   string    // 客户端IP
+	StartTime  time.Time // 请求开始时间
+	RequestURI string    // 请求URI
+	Method     string    // 请求方法
 }
 
-// GetUserIDFromContext 从上下文中获取用户ID（使用contextKey方式获取）
-func GetUserIDFromContext(ctx context.Context) uint {
-	if ctx == nil {
-		return 0
+// GetUserIDFromContext 从请求上下文中获取用户ID
+func GetUserIDFromContext(ctx context.Context) (uint, bool) {
+	reqCtx := GetRequestContext(ctx)
+	if reqCtx == nil || reqCtx.UserID == 0 {
+		return 0, false
 	}
-	if userID, ok := ctx.Value(userIDKey).(uint); ok {
-		return userID
-	}
-	return 0
+	return reqCtx.UserID, true
 }
 
-// GetUserRole 从上下文中获取用户角色
-func GetUserRole(ctx context.Context) string {
+// GetRequestContext 从context.Context获取请求上下文
+func GetRequestContext(ctx context.Context) *ReqContext {
 	if ctx == nil {
-		return ""
+		return nil
 	}
-	if role, ok := ctx.Value(userRoleKey).(string); ok {
-		return role
+	if rc, ok := ctx.Value(reqContextKey).(*ReqContext); ok {
+		return rc
 	}
-	return ""
-}
-
-// SetUserInfo 在上下文中设置用户信息
-func SetUserInfo(ctx context.Context, userID uint, role string) context.Context {
-	ctx = context.WithValue(ctx, userIDKey, userID)
-	return context.WithValue(ctx, userRoleKey, role)
-}
-
-// GetClientIP 从上下文中获取客户端IP
-func GetClientIP(ctx context.Context) string {
-	if ctx == nil {
-		return ""
-	}
-	if ip, ok := ctx.Value(clientIPKey).(string); ok {
-		return ip
-	}
-	return ""
-}
-
-// GetRequestLatency 获取请求延迟时间
-func GetRequestLatency(ctx context.Context) time.Duration {
-	if ctx == nil {
-		return 0
-	}
-	if startTime, ok := ctx.Value(startTimeKey).(time.Time); ok {
-		return time.Since(startTime)
-	}
-	return 0
+	return nil
 }
 
 // RequestContext 请求上下文中间件，设置请求相关信息
 func RequestContext(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// 设置请求开始时间
-		ctx := context.WithValue(r.Context(), startTimeKey, time.Now())
-		
-		// 设置客户端IP
-		clientIP := r.Header.Get("X-Forwarded-For")
-		if clientIP == "" {
-			clientIP = r.RemoteAddr
+		// 创建请求上下文
+		reqCtx := &ReqContext{
+			RequestID:  r.Header.Get("X-Request-ID"),
+			ClientIP:   r.Header.Get("X-Forwarded-For"),
+			StartTime:  time.Now(),
+			RequestURI: r.RequestURI,
+			Method:     r.Method,
 		}
-		ctx = context.WithValue(ctx, clientIPKey, clientIP)
-		
-		// 生成请求ID
-		requestID := r.Header.Get("X-Request-ID")
-		if requestID == "" {
-			requestID = uuid.New().String()
+
+		// 如果没有请求ID，则生成一个
+		if reqCtx.RequestID == "" {
+			reqCtx.RequestID = middleware.GetReqID(r.Context())
 		}
-		ctx = context.WithValue(ctx, requestIDKey, requestID)
-		
-		// 设置跟踪ID（兼容现有代码）
-		traceID := requestID
-		ctx = context.WithValue(ctx, traceIDKey, traceID)
-		
+
+		// 设置跟踪ID与请求ID相同
+		reqCtx.TraceID = reqCtx.RequestID
+
+		// 如果没有客户端IP，则使用RemoteAddr
+		if reqCtx.ClientIP == "" {
+			reqCtx.ClientIP = r.RemoteAddr
+		}
+
 		// 设置响应头
-		w.Header().Set("X-Request-ID", requestID)
-		
+		w.Header().Set("X-Request-ID", reqCtx.RequestID)
+
+		// 将请求上下文添加到请求上下文
+		ctx := context.WithValue(r.Context(), reqContextKey, reqCtx)
+
 		// 继续处理请求
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
-// LoggingMiddleware 是一个自定义的日志中间件
+// LoggingMiddleware 日志中间件，记录请求日志
 func LoggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 获取请求上下文
+		reqCtx := GetRequestContext(r.Context())
+		if reqCtx == nil {
+			// 如果没有请求上下文，则创建一个
+			reqCtx = &ReqContext{
+				StartTime:  time.Now(),
+				RequestURI: r.RequestURI,
+				Method:     r.Method,
+			}
+		}
+
+		// 获取请求主体大小
+		var requestSize int64
+		if r.ContentLength > 0 {
+			requestSize = r.ContentLength
+		}
+
 		// 包装响应写入器以获取状态码
 		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
-		
+
 		// 处理请求
 		next.ServeHTTP(ww, r)
-		
+
 		// 计算请求处理延迟
-		latency := GetRequestLatency(r.Context())
-		
+		latency := time.Since(reqCtx.StartTime)
+
 		// 构建日志事件
 		logEvent := log.Info().
-			Str("method", r.Method).
-			Str("path", r.URL.Path).
+			Str("method", reqCtx.Method).
+			Str("path", reqCtx.RequestURI).
 			Str("query", r.URL.RawQuery).
 			Int("status", ww.Status()).
 			Str("latency", latency.String()).
 			Int("size", ww.BytesWritten()).
-			Str("ip", GetClientIP(r.Context())).
+			Int64("req_size", requestSize).
+			Str("ip", reqCtx.ClientIP).
 			Str("user_agent", r.UserAgent()).
-			Str("trace_id", GetTraceID(r.Context()))
-		
+			Str("trace_id", reqCtx.TraceID)
+
 		// 添加用户信息（如果有）
-		userID, ok := GetUserID(r.Context())
-		if ok && userID != 0 {
-			logEvent = logEvent.Uint("user_id", userID)
+		if reqCtx.UserID != 0 {
+			logEvent = logEvent.Uint("user_id", reqCtx.UserID)
 		}
-		
+
 		// 记录日志
-		logEvent.Msg(fmt.Sprintf("%s %s - %d", r.Method, r.URL.Path, ww.Status()))
+		logEvent.Msg(fmt.Sprintf("%s %s - %d", reqCtx.Method, reqCtx.RequestURI, ww.Status()))
 	})
 }
 
@@ -160,12 +149,12 @@ func CORSMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Request-ID")
 		w.Header().Set("Access-Control-Expose-Headers", "X-Request-ID")
 		w.Header().Set("Access-Control-Max-Age", "3600")
-		
+
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		
+
 		next.ServeHTTP(w, r)
 	})
 }
@@ -173,30 +162,40 @@ func CORSMiddleware(next http.Handler) http.Handler {
 // RecoveryMiddleware 恢复中间件，处理 panic
 func RecoveryMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		defer func() {
-			if err := recover(); err != nil {
-				// 记录错误日志
-				log.Error().
-					Str("trace_id", GetTraceID(r.Context())).
-					Str("path", r.URL.Path).
-					Str("method", r.Method).
-					Interface("error", err).
-					Msg("服务器发生 panic")
-				
-				// 返回错误响应
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusInternalServerError)
-				traceID := GetTraceID(r.Context())
-				errResp := fmt.Sprintf(`{"code":500,"message":"内部服务器错误","error_code":"internal_server_error","trace_id":"%s","timestamp":%d}`, 
-					traceID, time.Now().Unix())
-				w.Write([]byte(errResp))
+		defer apperrors.RecoverPanicWithCallback("HTTP请求处理", func(err interface{}, stack []byte) {
+			// 获取请求上下文
+			reqCtx := GetRequestContext(r.Context())
+
+			// 返回错误响应
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+
+			// 构建错误响应
+			response := struct {
+				Success bool `json:"success"`
+				Error   struct {
+					Type    string `json:"type"`
+					Message string `json:"message"`
+				} `json:"error"`
+			}{
+				Success: false,
+				Error: struct {
+					Type    string `json:"type"`
+					Message string `json:"message"`
+				}{
+					Type:    "INTERNAL_ERROR",
+					Message: "服务器内部错误",
+				},
 			}
-		}()
+
+			// 如果有跟踪ID，添加到响应中
+			if reqCtx != nil && reqCtx.TraceID != "" {
+				response.Error.Message = "服务器内部错误，请稍后重试"
+			}
+
+			json.NewEncoder(w).Encode(response)
+		})
+
 		next.ServeHTTP(w, r)
 	})
-}
-
-// TraceID 是一个中间件，用于生成和传递请求的唯一 ID（向后兼容）
-func TraceID(next http.Handler) http.Handler {
-	return RequestContext(next)
 }

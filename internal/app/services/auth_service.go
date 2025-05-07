@@ -18,7 +18,7 @@ import (
 const (
 	// 令牌缓存键前缀
 	tokenCachePrefix = "token:"
-	
+
 	// 令牌黑名单缓存键前缀
 	tokenBlacklistPrefix = "blacklist:"
 )
@@ -32,7 +32,7 @@ type AuthService interface {
 
 // authService 认证服务实现
 type authService struct {
-	userRepo repository.UserRepository
+	userRepo  repository.UserRepository
 	validator *validator.Validate
 	db        *gorm.DB
 	jwtConfig *jwt.Config
@@ -52,33 +52,35 @@ func NewAuthService(ur repository.UserRepository, v *validator.Validate, db *gor
 
 // Login 用户登录
 func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.LoginResponse, error) {
+	// 验证请求数据
 	if err := s.validator.Struct(req); err != nil {
-		return nil, apperrors.NewValidationError(err.Error())
+		return nil, apperrors.ValidationError("输入数据验证失败", err)
 	}
 
 	// 获取用户
 	user, err := s.userRepo.GetByEmail(ctx, req.Email)
 	if err != nil {
-		return nil, apperrors.NewUnauthorizedError("邮箱或密码错误")
+		// 不管是没找到还是数据库错误，都返回相同的错误信息，避免枚举攻击
+		return nil, apperrors.UnauthorizedError("邮箱或密码错误", nil)
 	}
 
 	// 验证密码
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)); err != nil {
-		return nil, apperrors.NewUnauthorizedError("邮箱或密码错误")
+		return nil, apperrors.UnauthorizedError("邮箱或密码错误", nil)
 	}
 
 	// 生成访问令牌
 	accessToken, err := jwt.GenerateAccessToken(user.ID, user.Role, s.jwtConfig)
 	if err != nil {
-		return nil, apperrors.NewInternalError(err)
+		return nil, apperrors.InternalError("生成访问令牌失败", err)
 	}
 
 	// 生成刷新令牌
 	refreshToken, err := jwt.GenerateRefreshToken(user.ID, s.jwtConfig)
 	if err != nil {
-		return nil, apperrors.NewInternalError(err)
+		return nil, apperrors.InternalError("生成刷新令牌失败", err)
 	}
-	
+
 	// 缓存令牌 - 可以用于快速验证或令牌追踪
 	tokenKey := fmt.Sprintf("%s%d", tokenCachePrefix, user.ID)
 	if s.cache != nil {
@@ -112,14 +114,14 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*d
 	if s.cache != nil {
 		err := s.cache.GetObject(ctx, blacklistKey, &blacklisted)
 		if err == nil && blacklisted {
-			return nil, apperrors.NewUnauthorizedError("刷新令牌已被撤销")
+			return nil, apperrors.UnauthorizedError("刷新令牌已被撤销", nil)
 		}
 	}
 
 	// 解析刷新令牌
 	userId, err := jwt.ParseRefreshToken(refreshToken, s.jwtConfig.Secret)
 	if err != nil {
-		return nil, apperrors.NewUnauthorizedError("无效的刷新令牌")
+		return nil, apperrors.UnauthorizedError("无效的刷新令牌", nil)
 	}
 
 	// 用户ID转为字符串
@@ -128,15 +130,15 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*d
 	// 获取用户
 	user, err := s.userRepo.GetByID(ctx, userIdStr)
 	if err != nil {
-		return nil, apperrors.NewUnauthorizedError("用户不存在")
+		return nil, apperrors.UnauthorizedError("用户不存在", nil)
 	}
 
 	// 生成新的访问令牌
 	accessToken, err := jwt.GenerateAccessToken(user.ID, user.Role, s.jwtConfig)
 	if err != nil {
-		return nil, apperrors.NewInternalError(err)
+		return nil, apperrors.InternalError("生成访问令牌失败", err)
 	}
-	
+
 	// 更新缓存中的令牌
 	tokenKey := fmt.Sprintf("%s%d", tokenCachePrefix, user.ID)
 	if s.cache != nil {
@@ -157,18 +159,18 @@ func (s *authService) Logout(ctx context.Context, accessToken string) error {
 	// 解析令牌以获取用户ID
 	claims, err := jwt.ParseToken(accessToken, s.jwtConfig.Secret)
 	if err != nil {
-		return apperrors.NewUnauthorizedError("无效的访问令牌")
+		return apperrors.UnauthorizedError("无效的访问令牌", nil)
 	}
-	
+
 	// 将令牌加入黑名单
 	if s.cache != nil {
 		blacklistKey := fmt.Sprintf("%s%s", tokenBlacklistPrefix, accessToken)
 		_ = s.cache.SetObject(ctx, blacklistKey, true, s.jwtConfig.AccessTokenExp)
-		
+
 		// 清除用户令牌缓存
 		tokenKey := fmt.Sprintf("%s%d", tokenCachePrefix, claims.UserID)
 		_ = s.cache.Delete(ctx, tokenKey)
 	}
-	
+
 	return nil
-} 
+}
