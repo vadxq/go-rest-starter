@@ -1,8 +1,9 @@
 package injection
 
 import (
+	"log/slog"
+
 	"github.com/go-playground/validator/v10"
-	"github.com/rs/zerolog"
 
 	"github.com/vadxq/go-rest-starter/internal/app/handlers"
 )
@@ -16,7 +17,7 @@ type Handlers struct {
 // InitHandlers 初始化所有HTTP处理器
 func InitHandlers(
 	services *Services,
-	logger zerolog.Logger,
+	logger *slog.Logger,
 	validator *validator.Validate,
 ) *Handlers {
 	// 初始化用户处理器

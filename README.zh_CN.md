@@ -6,13 +6,17 @@
 
 ## 目录
 
+设计参考:
+
+- [go project layout](https://github.com/golang-standards/project-layout)
+- [go modules layout](https://go.dev/doc/modules/layout)
+
 ```md
 project-root/
 ├── api/                          # API 相关文件
-│   └── v1/                       # API 版本
-│       └── router.go             # API 路由定义
-│       └── swagger.go            # Swagger文档路由
-│       └── dto/                  # 数据传输对象
+│   └── app/                      # API app docs
+│       └── docs.go               # docs.go
+│       └── swagger.json          # Swagger文档json
 ├── cmd/                          # 主程序入口
 │   └── app/                      # 应用程序
 │       └── main.go               # 程序入口
@@ -21,19 +25,20 @@ project-root/
 │   └── docker/                  
 │   └── k8s/                     
 ├── internal/                     # 内部应用代码
-│   ├── app/                      # 应用核心逻辑
-│   │   ├── config/               # 业务配置（优化配置结构）
-│   │   ├── db/                   # 数据连接（简化为单一入口）
-│   │   ├── handlers/             # 业务handler（简化处理逻辑）
-│   │   ├── injection/            # 依赖注入（优化为更轻量的DI）
-│   │   ├── middleware/           # 中间件（按功能分组）
-│   │   ├── models/               # 数据模型（精简为核心字段）
-│   │   ├── repository/           # 数据访问层（统一接口）
-│   │   └── services/             # 业务服务层（清晰的职责划分）
-│   └── pkg/                      # 内部通用工具
-│       └── errors/               # 增强的错误处理
+│   └── app/                      # 应用核心逻辑
+│      ├── config/                # 业务配置（优化配置结构）
+│      ├── db/                    # 数据连接（简化为单一入口）
+│      ├── dto/                   # 数据传输对象
+│      ├── handlers/              # 业务handler（简化处理逻辑）
+│      ├── injection/             # 依赖注入（优化为更轻量的DI）
+│      ├── middleware/            # 中间件（按功能分组）
+│      ├── models/                # 数据模型（精简为核心字段）
+│      ├── repository/            # 数据访问层（统一接口）
+│      ├── router/                # API 路由定义
+│      └── services/              # 业务服务层（清晰的职责划分）
 ├── migrations/                   # 数据库迁移文件（版本化管理）
 ├── pkg/                          # 外部包（独立可复用的组件）
+│   ├── errors/                   # 错误处理包
 │   └── utils                     # 通用工具函数
 ├── scripts/                      # 开发和部署脚本（简化流程）
 ├── .air.toml                     # 开发热重载配置
@@ -85,7 +90,7 @@ docker run -p 7001:7001 go-rest-starter
 - Database: `postgres`
 - Cache: `redis`
 - ORM: `gorm`
-- Logger: `zerolog`
+- Logger: `log/slog` (Go 内置)
 - Config: `viper`
 - Test: `testify`
 - 文档: `swagger`

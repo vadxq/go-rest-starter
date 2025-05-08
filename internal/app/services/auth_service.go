@@ -8,11 +8,11 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
-	"github.com/vadxq/go-rest-starter/api/v1/dto"
+	"github.com/vadxq/go-rest-starter/internal/app/dto"
 	"github.com/vadxq/go-rest-starter/internal/app/repository"
-	"github.com/vadxq/go-rest-starter/internal/pkg/cache"
-	apperrors "github.com/vadxq/go-rest-starter/internal/pkg/errors"
-	"github.com/vadxq/go-rest-starter/internal/pkg/jwt"
+	"github.com/vadxq/go-rest-starter/pkg/cache"
+	apperrors "github.com/vadxq/go-rest-starter/pkg/errors"
+	"github.com/vadxq/go-rest-starter/pkg/jwt"
 )
 
 const (

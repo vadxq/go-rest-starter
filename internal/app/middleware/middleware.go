@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/rs/zerolog/log"
 
-	apperrors "github.com/vadxq/go-rest-starter/internal/pkg/errors"
+	apperrors "github.com/vadxq/go-rest-starter/pkg/errors"
 )
 
 // 上下文键类型
@@ -118,26 +118,27 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 		// 计算请求处理延迟
 		latency := time.Since(reqCtx.StartTime)
 
-		// 构建日志事件
-		logEvent := log.Info().
-			Str("method", reqCtx.Method).
-			Str("path", reqCtx.RequestURI).
-			Str("query", r.URL.RawQuery).
-			Int("status", ww.Status()).
-			Str("latency", latency.String()).
-			Int("size", ww.BytesWritten()).
-			Int64("req_size", requestSize).
-			Str("ip", reqCtx.ClientIP).
-			Str("user_agent", r.UserAgent()).
-			Str("trace_id", reqCtx.TraceID)
+		// 构建日志事件参数
+		args := []interface{}{
+			"method", reqCtx.Method,
+			"path", reqCtx.RequestURI,
+			"query", r.URL.RawQuery,
+			"status", ww.Status(),
+			"latency", latency.String(),
+			"size", ww.BytesWritten(),
+			"req_size", requestSize,
+			"ip", reqCtx.ClientIP,
+			"user_agent", r.UserAgent(),
+			"trace_id", reqCtx.TraceID,
+		}
 
 		// 添加用户信息（如果有）
 		if reqCtx.UserID != 0 {
-			logEvent = logEvent.Uint("user_id", reqCtx.UserID)
+			args = append(args, "user_id", reqCtx.UserID)
 		}
 
 		// 记录日志
-		logEvent.Msg(fmt.Sprintf("%s %s - %d", reqCtx.Method, reqCtx.RequestURI, ww.Status()))
+		slog.Info(fmt.Sprintf("%s %s - %d", reqCtx.Method, reqCtx.RequestURI, ww.Status()), args...)
 	})
 }
 

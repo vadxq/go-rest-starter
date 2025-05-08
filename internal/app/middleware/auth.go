@@ -3,13 +3,12 @@ package middleware
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strings"
 
-	"github.com/rs/zerolog/log"
-
-	apperrors "github.com/vadxq/go-rest-starter/internal/pkg/errors"
-	jwtpkg "github.com/vadxq/go-rest-starter/internal/pkg/jwt"
+	apperrors "github.com/vadxq/go-rest-starter/pkg/errors"
+	jwtpkg "github.com/vadxq/go-rest-starter/pkg/jwt"
 )
 
 // UserIDKey 用户ID键
@@ -61,7 +60,7 @@ func JWTAuth(config *JWTConfig) func(http.Handler) http.Handler {
 			// 解析令牌
 			claims, err := jwtpkg.ParseToken(tokenString, config.Secret)
 			if err != nil {
-				log.Error().Err(err).Str("token", tokenString).Msg("解析令牌失败")
+				slog.Error("解析令牌失败", "error", err, "token", tokenString)
 				renderUnauthorized(w, "无效的认证令牌")
 				return
 			}

@@ -4,23 +4,24 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/go-playground/validator/v10"
-	"github.com/rs/zerolog"
+	"log/slog"
 
-	"github.com/vadxq/go-rest-starter/api/v1/dto"
+	"github.com/go-playground/validator/v10"
+
+	"github.com/vadxq/go-rest-starter/internal/app/dto"
 	"github.com/vadxq/go-rest-starter/internal/app/services"
-	apperrors "github.com/vadxq/go-rest-starter/internal/pkg/errors"
+	apperrors "github.com/vadxq/go-rest-starter/pkg/errors"
 )
 
 // AuthHandler 处理认证相关的HTTP请求
 type AuthHandler struct {
 	authService services.AuthService
-	logger      zerolog.Logger
+	logger      *slog.Logger
 	validator   *validator.Validate
 }
 
 // NewAuthHandler 创建一个新的AuthHandler实例
-func NewAuthHandler(as services.AuthService, logger zerolog.Logger, v *validator.Validate) *AuthHandler {
+func NewAuthHandler(as services.AuthService, logger *slog.Logger, v *validator.Validate) *AuthHandler {
 	return &AuthHandler{
 		authService: as,
 		logger:      logger,

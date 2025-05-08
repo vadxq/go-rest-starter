@@ -7,9 +7,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
-	v1 "github.com/vadxq/go-rest-starter/api/v1"
 	"github.com/vadxq/go-rest-starter/internal/app/handlers"
 	custommiddleware "github.com/vadxq/go-rest-starter/internal/app/middleware"
+	v1 "github.com/vadxq/go-rest-starter/internal/app/router/v1"
 )
 
 // 路由组类型定义
@@ -128,7 +128,12 @@ func securityHeaders(next http.Handler) http.Handler {
 		// 引用策略
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		// 内容安全策略
-		w.Header().Set("Content-Security-Policy", "default-src 'self'")
+		cspValue := "default-src 'self'; " +
+			"script-src 'self' 'unsafe-inline'; " +
+			"img-src 'self' data:; " +
+			"style-src 'self' 'unsafe-inline'; " +
+			"font-src 'self' data:;"
+		w.Header().Set("Content-Security-Policy", cspValue)
 
 		next.ServeHTTP(w, r)
 	})

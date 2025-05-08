@@ -13,7 +13,7 @@ func SetupProtectedRoutes(r chi.Router, config RouterConfig, jwtConfig *custommi
 		r.Use(custommiddleware.JWTAuth(jwtConfig))
 
 		// 用户登出（需要认证的认证相关路由）
-		r.Route("/auth", func(r chi.Router) {
+		r.Route("/account", func(r chi.Router) {
 			r.Post("/logout", config.AuthHandler.Logout)
 		})
 

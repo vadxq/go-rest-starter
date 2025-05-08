@@ -1,14 +1,16 @@
 package injection
 
 import (
+	"log/slog"
+	"os"
+
 	"github.com/go-playground/validator/v10"
-	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
 
 	"github.com/vadxq/go-rest-starter/internal/app/config"
 	"github.com/vadxq/go-rest-starter/internal/app/services"
-	"github.com/vadxq/go-rest-starter/internal/pkg/cache"
-	"github.com/vadxq/go-rest-starter/internal/pkg/jwt"
+	"github.com/vadxq/go-rest-starter/pkg/cache"
+	"github.com/vadxq/go-rest-starter/pkg/jwt"
 )
 
 // Services 所有服务的集合
@@ -16,10 +18,10 @@ import (
 type Services struct {
 	// 用户相关业务逻辑
 	UserService services.UserService
-	
+
 	// 认证相关业务逻辑
 	AuthService services.AuthService
-	
+
 	// 可以在此添加更多服务...
 	// ProductService services.ProductService
 	// OrderService services.OrderService
@@ -36,21 +38,25 @@ func InitServices(
 ) *Services {
 	// 参数验证
 	if repos == nil {
-		log.Fatal().Msg("仓库依赖不能为空")
+		slog.Error("仓库依赖不能为空")
+		os.Exit(1)
 	}
 	if validate == nil {
-		log.Fatal().Msg("验证器不能为空")
+		slog.Error("验证器不能为空")
+		os.Exit(1)
 	}
 	if db == nil {
-		log.Fatal().Msg("数据库连接不能为空")
+		slog.Error("数据库连接不能为空")
+		os.Exit(1)
 	}
 	if config == nil {
-		log.Fatal().Msg("配置不能为空")
+		slog.Error("配置不能为空")
+		os.Exit(1)
 	}
-	
+
 	// 创建JWT配置
 	jwtConfig := createJWTConfig(config)
-	
+
 	// 创建所有服务实例
 	userService := services.NewUserService(repos.UserRepo, validate, db, cacheInstance)
 	authService := services.NewAuthService(repos.UserRepo, validate, db, jwtConfig, cacheInstance)
@@ -66,13 +72,13 @@ func InitServices(
 // 这是一个辅助函数，用于创建JWT服务所需的配置
 func createJWTConfig(config *config.AppConfig) *jwt.Config {
 	if config.JWT.Secret == "" {
-		log.Warn().Msg("JWT密钥为空，这可能导致安全问题")
+		slog.Warn("JWT密钥为空，这可能导致安全问题")
 	}
-	
+
 	return &jwt.Config{
 		Secret:          config.JWT.Secret,
 		AccessTokenExp:  config.JWT.AccessTokenExp,
 		RefreshTokenExp: config.JWT.RefreshTokenExp,
 		Issuer:          config.JWT.Issuer,
 	}
-} 
+}

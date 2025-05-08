@@ -6,13 +6,17 @@
 
 ## Directory Structure
 
+Design reference:
+
+- [go project layout](https://github.com/golang-standards/project-layout)
+- [go modules layout](https://go.dev/doc/modules/layout)
+
 ```md
 project-root/
 ├── api/                          # API related files
-│   └── v1/                       # API version
-│       └── router.go             # API route definitions
-│       └── swagger.go            # Swagger documentation routes
-│       └── dto/                  # Data Transfer Objects
+│   └── app/                      # API app docs
+│       └── docs.go               # docs.go
+│       └── swagger.json          # Swagger documentation
 ├── cmd/                          # Main program entry
 │   └── app/                      # Application
 │       └── main.go               # Program entry point
@@ -21,19 +25,20 @@ project-root/
 │   └── docker/                  
 │   └── k8s/                     
 ├── internal/                     # Internal application code
-│   ├── app/                      # Core application logic
-│   │   ├── config/               # Business configurations (optimized structure)
-│   │   ├── db/                   # Database connections (simplified to single entry)
-│   │   ├── handlers/             # Business handlers (simplified logic)
-│   │   ├── injection/            # Dependency injection (optimized for lightweight DI)
-│   │   ├── middleware/           # Middleware (grouped by functionality)
-│   │   ├── models/               # Data models (streamlined core fields)
-│   │   ├── repository/           # Data access layer (unified interface)
-│   │   └── services/             # Business service layer (clear responsibility division)
-│   └── pkg/                      # Internal common utilities
-│       └── errors/               # Enhanced error handling
+│   └── app/                      # Core application logic
+│       ├── config/               # Business configurations (optimized structure)
+│       ├── db/                   # Database connections (simplified to single entry)
+│       ├── dto/                  # Data Transfer Objects
+│       ├── handlers/             # Business handlers (simplified logic)
+│       ├── injection/            # Dependency injection (optimized for lightweight DI)
+│       ├── middleware/           # Middleware (grouped by functionality)
+│       ├── models/               # Data models (streamlined core fields)
+│       ├── repository/           # Data access layer (unified interface)
+│       ├── router/               # API router
+│       └── services/             # Business service layer (clear responsibility division)
 ├── migrations/                   # Database migration files (version controlled)
 ├── pkg/                          # External packages (independent reusable components)
+│   ├── errors/                   # Custom error handling package
 │   └── utils                     # Common utility functions
 ├── scripts/                      # Development and deployment scripts (simplified workflow)
 ├── .air.toml                     # Development hot-reload configuration
@@ -85,7 +90,7 @@ docker run -p 7001:7001 go-rest-starter
 - Database: `postgres`
 - Cache: `redis`
 - ORM: `gorm`
-- Logger: `zerolog`
+- Logger: `log/slog` (Go built-in)
 - Config: `viper`
 - Test: `testify`
 - Documentation: `swagger`

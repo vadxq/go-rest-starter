@@ -4,24 +4,25 @@ import (
 	"net/http"
 	"strconv"
 
+	"log/slog"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
-	"github.com/rs/zerolog"
 
-	"github.com/vadxq/go-rest-starter/api/v1/dto"
+	"github.com/vadxq/go-rest-starter/internal/app/dto"
 	"github.com/vadxq/go-rest-starter/internal/app/services"
-	apperrors "github.com/vadxq/go-rest-starter/internal/pkg/errors"
+	apperrors "github.com/vadxq/go-rest-starter/pkg/errors"
 )
 
 // UserHandler 处理用户相关的 HTTP 请求
 type UserHandler struct {
 	userService services.UserService
-	logger      zerolog.Logger
+	logger      *slog.Logger
 	validator   *validator.Validate
 }
 
 // NewUserHandler 创建一个新的 UserHandler 实例
-func NewUserHandler(us services.UserService, logger zerolog.Logger, v *validator.Validate) *UserHandler {
+func NewUserHandler(us services.UserService, logger *slog.Logger, v *validator.Validate) *UserHandler {
 	return &UserHandler{
 		userService: us,
 		logger:      logger,

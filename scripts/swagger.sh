@@ -17,12 +17,12 @@ if ! command -v swag &> /dev/null; then
             echo "在 $SWAG_PATH 找到swag，将直接使用此路径"
             
             # 清空现有的swag-docs目录
-            rm -rf swag-docs
+            rm -rf api/app
             
             # 使用完整路径执行swag
-            "$SWAG_PATH" init -g cmd/app/main.go -o swag-docs
+            "$SWAG_PATH" init -g cmd/app/main.go -o api/app
             
-            echo "Swagger文档已生成到 swag-docs/ 目录"
+            echo "Swagger文档已生成到 api/app/ 目录"
             exit 0
         else
             echo "在 $GOPATH/bin 中未找到swag，请确保安装成功并将 $GOPATH/bin 添加到PATH环境变量"
@@ -34,9 +34,9 @@ if ! command -v swag &> /dev/null; then
 fi
 
 # 清空现有的swag-docs目录
-rm -rf swag-docs
+rm -rf api/app
 
 # 生成Swagger文档
-swag init -g cmd/app/main.go -o swag-docs
+swag init -g cmd/app/main.go -o api/app
 
-echo "Swagger文档已生成到 swag-docs/ 目录" 
+echo "Swagger文档已生成到 api/app/ 目录" 

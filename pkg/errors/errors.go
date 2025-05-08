@@ -2,10 +2,9 @@ package errors
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 	"runtime/debug"
-
-	"github.com/rs/zerolog/log"
 )
 
 // ErrorType 是错误类型的枚举
@@ -144,11 +143,7 @@ func RecoverPanic(source string) {
 		stackTrace := debug.Stack()
 
 		// 记录错误日志
-		log.Error().
-			Interface("error", r).
-			Str("source", source).
-			Bytes("stack_trace", stackTrace).
-			Msg("捕获到异常")
+		slog.Error("捕获到异常", "error", r, "source", source, "stack_trace", string(stackTrace))
 	}
 }
 
@@ -159,11 +154,7 @@ func RecoverPanicWithCallback(source string, callback func(err interface{}, stac
 		stackTrace := debug.Stack()
 
 		// 记录错误日志
-		log.Error().
-			Interface("error", r).
-			Str("source", source).
-			Bytes("stack_trace", stackTrace).
-			Msg("捕获到异常")
+		slog.Error("捕获到异常", "error", r, "source", source, "stack_trace", string(stackTrace))
 
 		// 执行回调
 		if callback != nil {

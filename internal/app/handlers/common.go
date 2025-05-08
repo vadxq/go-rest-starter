@@ -3,11 +3,10 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 
-	"github.com/rs/zerolog/log"
-
-	apperrors "github.com/vadxq/go-rest-starter/internal/pkg/errors"
+	apperrors "github.com/vadxq/go-rest-starter/pkg/errors"
 )
 
 // Response 标准API响应结构
@@ -35,7 +34,7 @@ func RespondJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.WriteHeader(status)
 
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		log.Error().Err(err).Msg("响应JSON序列化失败")
+		slog.Error("响应JSON序列化失败", "error", err)
 		http.Error(w, "内部服务器错误", http.StatusInternalServerError)
 	}
 }
@@ -65,9 +64,9 @@ func RespondError(w http.ResponseWriter, err error) {
 
 	// 记录错误
 	if status >= 500 {
-		log.Error().Err(appErr).Str("type", string(appErr.Type)).Msg(appErr.Message)
+		slog.Error(appErr.Message, "error", appErr, "type", string(appErr.Type))
 	} else {
-		log.Debug().Err(appErr).Str("type", string(appErr.Type)).Msg(appErr.Message)
+		slog.Debug(appErr.Message, "error", appErr, "type", string(appErr.Type))
 	}
 
 	// 发送响应
@@ -75,7 +74,7 @@ func RespondError(w http.ResponseWriter, err error) {
 	w.WriteHeader(status)
 
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		log.Error().Err(err).Msg("错误响应JSON序列化失败")
+		slog.Error("错误响应JSON序列化失败", "error", err)
 		http.Error(w, "内部服务器错误", http.StatusInternalServerError)
 	}
 }

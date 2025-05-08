@@ -6,7 +6,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/vadxq/go-rest-starter/internal/app/models"
-	apperrors "github.com/vadxq/go-rest-starter/internal/pkg/errors"
+	apperrors "github.com/vadxq/go-rest-starter/pkg/errors"
 )
 
 // UserRepository 定义了用户仓库接口
