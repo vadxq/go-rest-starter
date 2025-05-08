@@ -11,9 +11,10 @@ import (
 
 // Response 标准API响应结构
 type Response struct {
+	Code    int         `json:"code"`
 	Success bool        `json:"success"`
+	Msg     string      `json:"msg"`
 	Data    interface{} `json:"data,omitempty"`
-	Error   *ErrorInfo  `json:"error,omitempty"`
 }
 
 // ErrorInfo 错误信息结构
@@ -26,7 +27,9 @@ type ErrorInfo struct {
 // RespondJSON 发送JSON响应
 func RespondJSON(w http.ResponseWriter, status int, data interface{}) {
 	response := Response{
+		Code:    status,
 		Success: status >= 200 && status < 300,
+		Msg:     "OK",
 		Data:    data,
 	}
 
@@ -49,18 +52,16 @@ func RespondError(w http.ResponseWriter, err error) {
 		appErr = apperrors.InternalError("内部服务器错误", err)
 	}
 
-	// 构建错误响应
-	response := Response{
-		Success: false,
-		Error: &ErrorInfo{
-			Type:    string(appErr.Type),
-			Message: appErr.Message,
-			Fields:  appErr.Fields,
-		},
-	}
-
 	// 获取HTTP状态码
 	status := appErr.StatusCode()
+
+	// 构建错误响应
+	response := Response{
+		Code:    status,
+		Success: false,
+		Msg:     appErr.Message,
+		Data:    appErr, // 将错误信息放入data字段
+	}
 
 	// 记录错误
 	if status >= 500 {

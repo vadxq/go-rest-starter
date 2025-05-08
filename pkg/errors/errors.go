@@ -33,7 +33,6 @@ type Error struct {
 	Type    ErrorType `json:"type"`
 	Message string    `json:"message"`
 	Err     error     `json:"-"`
-	Fields  []string  `json:"fields,omitempty"`
 }
 
 // Error 实现标准error接口
@@ -47,12 +46,6 @@ func (e *Error) Error() string {
 // Unwrap 实现errors.Unwrap接口
 func (e *Error) Unwrap() error {
 	return e.Err
-}
-
-// WithFields 添加错误字段
-func (e *Error) WithFields(fields ...string) *Error {
-	e.Fields = append(e.Fields, fields...)
-	return e
 }
 
 // StatusCode 返回对应的HTTP状态码

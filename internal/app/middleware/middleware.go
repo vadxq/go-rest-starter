@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -10,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/vadxq/go-rest-starter/internal/app/handlers"
 	apperrors "github.com/vadxq/go-rest-starter/pkg/errors"
 )
 
@@ -167,34 +167,15 @@ func RecoveryMiddleware(next http.Handler) http.Handler {
 			// 获取请求上下文
 			reqCtx := GetRequestContext(r.Context())
 
-			// 返回错误响应
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-
-			// 构建错误响应
-			response := struct {
-				Success bool `json:"success"`
-				Error   struct {
-					Type    string `json:"type"`
-					Message string `json:"message"`
-				} `json:"error"`
-			}{
-				Success: false,
-				Error: struct {
-					Type    string `json:"type"`
-					Message string `json:"message"`
-				}{
-					Type:    "INTERNAL_ERROR",
-					Message: "服务器内部错误",
-				},
-			}
-
-			// 如果有跟踪ID，添加到响应中
+			// 构建错误消息
+			message := "服务器内部错误"
 			if reqCtx != nil && reqCtx.TraceID != "" {
-				response.Error.Message = "服务器内部错误，请稍后重试"
+				message = "服务器内部错误，请稍后重试"
 			}
 
-			json.NewEncoder(w).Encode(response)
+			// 使用统一的错误响应处理
+			appErr := apperrors.InternalError(message, fmt.Errorf("%v", err))
+			handlers.RespondError(w, appErr)
 		})
 
 		next.ServeHTTP(w, r)

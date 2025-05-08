@@ -2,11 +2,11 @@ package middleware
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strings"
 
+	"github.com/vadxq/go-rest-starter/internal/app/handlers"
 	apperrors "github.com/vadxq/go-rest-starter/pkg/errors"
 	jwtpkg "github.com/vadxq/go-rest-starter/pkg/jwt"
 )
@@ -108,46 +108,14 @@ func RequireRole(role string) func(http.Handler) http.Handler {
 	}
 }
 
-// 统一响应结构
-type authResponse struct {
-	Success bool       `json:"success"`
-	Error   *errorInfo `json:"error,omitempty"`
-}
-
-// 错误信息结构
-type errorInfo struct {
-	Type    string `json:"type"`
-	Message string `json:"message"`
-}
-
 // 渲染未授权错误响应
 func renderUnauthorized(w http.ResponseWriter, message string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusUnauthorized)
-
-	response := authResponse{
-		Success: false,
-		Error: &errorInfo{
-			Type:    string(apperrors.ErrorTypeUnauthorized),
-			Message: message,
-		},
-	}
-
-	json.NewEncoder(w).Encode(response)
+	err := apperrors.New(apperrors.ErrorTypeUnauthorized, message, nil)
+	handlers.RespondError(w, err)
 }
 
 // 渲染权限不足错误响应
 func renderForbidden(w http.ResponseWriter, message string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusForbidden)
-
-	response := authResponse{
-		Success: false,
-		Error: &errorInfo{
-			Type:    string(apperrors.ErrorTypeForbidden),
-			Message: message,
-		},
-	}
-
-	json.NewEncoder(w).Encode(response)
+	err := apperrors.New(apperrors.ErrorTypeForbidden, message, nil)
+	handlers.RespondError(w, err)
 }
