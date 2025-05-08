@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	httpSwagger "github.com/swaggo/http-swagger"
+	httpSwagger "github.com/swaggo/http-swagger/v2"
 
 	_ "github.com/vadxq/go-rest-starter/api/app" // 导入生成的文档
 )
