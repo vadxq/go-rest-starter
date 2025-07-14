@@ -37,3 +37,5 @@ logs
 swag-docs
 api/app
 tmp
+
+.DS_Store
