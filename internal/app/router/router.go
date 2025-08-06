@@ -20,9 +20,10 @@ type RouterGroup struct {
 
 // RouterConfig 路由配置
 type RouterConfig struct {
-	UserHandler *handlers.UserHandler
-	AuthHandler *handlers.AuthHandler
-	JWTSecret   string
+	UserHandler   *handlers.UserHandler
+	AuthHandler   *handlers.AuthHandler
+	HealthHandler *handlers.HealthHandler
+	JWTSecret     string
 }
 
 // Setup 设置所有API路由
@@ -34,7 +35,7 @@ func Setup(r chi.Router, config RouterConfig) {
 	v1.SetupSwaggerRoutes(r)
 
 	// 健康检查和状态监控
-	setupUtilityRoutes(r)
+	setupUtilityRoutes(r, config.HealthHandler)
 
 	// API v1
 	setupV1Routes(r, config)
@@ -55,15 +56,25 @@ func applyGlobalMiddleware(r chi.Router) {
 	// 安全中间件
 	r.Use(custommiddleware.CORSMiddleware) // 跨域
 	r.Use(securityHeaders)                 // 安全头
+	
+	// 速率限制中间件
+	rateLimiter := custommiddleware.NewRateLimitMiddleware(custommiddleware.DefaultRateLimitConfig)
+	r.Use(rateLimiter.Handler) // 速率限制
 }
 
 // setupUtilityRoutes 设置实用路由（健康检查、状态监控等）
-func setupUtilityRoutes(r chi.Router) {
-	// 健康检查
-	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
-	})
+func setupUtilityRoutes(r chi.Router, healthHandler *handlers.HealthHandler) {
+	// 基础健康检查
+	r.Get("/health", healthHandler.Health)
+
+	// 详细健康检查
+	r.Get("/health/detailed", healthHandler.DetailedHealth)
+
+	// 就绪检查
+	r.Get("/ready", healthHandler.Ready)
+
+	// 存活检查
+	r.Get("/live", healthHandler.Live)
 
 	// 版本信息
 	r.Get("/version", func(w http.ResponseWriter, r *http.Request) {

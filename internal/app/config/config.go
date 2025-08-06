@@ -1,11 +1,18 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/spf13/viper"
+)
+
+// 配置验证错误
+var (
+	ErrInvalidPort         = errors.New("invalid server port")
+	ErrMissingDatabaseHost = errors.New("missing database host")
 )
 
 // AppConfig 顶层配置结构，匹配yaml文件中的app键

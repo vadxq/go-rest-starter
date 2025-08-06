@@ -163,7 +163,7 @@ func CORSMiddleware(next http.Handler) http.Handler {
 // RecoveryMiddleware 恢复中间件，处理 panic
 func RecoveryMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		defer apperrors.RecoverPanicWithCallback("HTTP请求处理", func(err interface{}, stack []byte) {
+		defer apperrors.RecoverPanicWithCallback("HTTP请求处理", func(err interface{}) {
 			// 获取请求上下文
 			reqCtx := GetRequestContext(r.Context())
 

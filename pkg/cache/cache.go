@@ -6,6 +6,9 @@ import (
 	"time"
 )
 
+// ErrNotFound 缓存未找到错误
+var ErrNotFound = errors.New("cache: key not found")
+
 // Cache 定义缓存接口
 type Cache interface {
 	// Get 从缓存中获取值
@@ -45,11 +48,10 @@ type Options struct {
 	CleanupInterval time.Duration
 }
 
-// NewCache 创建缓存实例
+// NewCache 创建缓存实例（仅支持Redis）
 func NewCache(opts Options) (Cache, error) {
-	if opts.RedisAddress != "" {
-		return newRedisCache(opts)
+	if opts.RedisAddress == "" {
+		return nil, errors.New("Redis地址未配置，缓存服务需要Redis支持")
 	}
-	return nil, errors.New("未指定缓存实现")
-	// return newMemoryCache(opts)
+	return newRedisCache(opts)
 }

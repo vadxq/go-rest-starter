@@ -9,6 +9,9 @@ import (
 
 	"github.com/vadxq/go-rest-starter/internal/app/config"
 	"github.com/vadxq/go-rest-starter/pkg/cache"
+	"github.com/vadxq/go-rest-starter/pkg/logger"
+	"github.com/vadxq/go-rest-starter/pkg/queue"
+	"github.com/vadxq/go-rest-starter/pkg/transaction"
 )
 
 // Dependencies 应用依赖容器
@@ -28,11 +31,13 @@ type Dependencies struct {
 
 	// 基础设施 - 提供底层支持
 	Infrastructure struct {
-		DB        *gorm.DB
-		Redis     *redis.Client
-		Cache     cache.Cache
-		Validator *validator.Validate
-		Logger    *slog.Logger
+		DB                *gorm.DB
+		Redis             *redis.Client
+		Cache             cache.Cache
+		Validator         *validator.Validate
+		Logger            logger.Logger
+		Queue             queue.Queue
+		TransactionManager transaction.Manager
 	}
 }
 
@@ -43,25 +48,39 @@ func NewDependencies(
 	db *gorm.DB, // 数据库连接
 	rdb *redis.Client, // Redis客户端
 	validate *validator.Validate, // 验证器
-	config *config.AppConfig, // 应用配置
+	appConfig *config.AppConfig, // 应用配置
 	cacheInstance cache.Cache, // 缓存实例
-	logger *slog.Logger, // 日志记录器，更改类型
+	appLogger logger.Logger, // 日志记录器
 ) *Dependencies {
+	// 创建队列管理器（仅支持Redis）
+	var queueManager queue.Queue
+	if rdb != nil {
+		queueManager = queue.NewRedisQueue(rdb, 10)
+	}
+	// 如果没有Redis，队列功能将不可用
+
+	// 创建事务管理器
+	txManager := transaction.NewGormTransactionManager(db)
+
 	// 创建依赖容器
 	deps := &Dependencies{
-		Config: config,
+		Config: appConfig,
 		Infrastructure: struct {
-			DB        *gorm.DB
-			Redis     *redis.Client
-			Cache     cache.Cache
-			Validator *validator.Validate
-			Logger    *slog.Logger
+			DB                *gorm.DB
+			Redis             *redis.Client
+			Cache             cache.Cache
+			Validator         *validator.Validate
+			Logger            logger.Logger
+			Queue             queue.Queue
+			TransactionManager transaction.Manager
 		}{
-			DB:        db,
-			Redis:     rdb,
-			Cache:     cacheInstance,
-			Validator: validate,
-			Logger:    logger,
+			DB:                db,
+			Redis:             rdb,
+			Cache:             cacheInstance,
+			Validator:         validate,
+			Logger:            appLogger,
+			Queue:             queueManager,
+			TransactionManager: txManager,
 		},
 	}
 
@@ -69,10 +88,12 @@ func NewDependencies(
 	deps.Repositories = InitRepositories(db)
 
 	// 2. 初始化服务层依赖 - 业务逻辑层
-	deps.Services = InitServices(deps.Repositories, validate, db, config, cacheInstance)
+	deps.Services = InitServices(deps.Repositories, validate, db, appConfig, cacheInstance)
 
 	// 3. 初始化处理器层依赖 - 表现层
-	deps.Handlers = InitHandlers(deps.Services, logger, validate)
+	// 需要将 logger.Logger 接口转换为 *slog.Logger
+	slogLogger := slog.Default()
+	deps.Handlers = InitHandlers(deps.Services, slogLogger, validate, db, rdb)
 
 	// 返回组装好的依赖容器
 	return deps

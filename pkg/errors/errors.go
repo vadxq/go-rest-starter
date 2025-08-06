@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"runtime/debug"
 )
 
 // ErrorType 是错误类型的枚举
@@ -37,9 +36,7 @@ type Error struct {
 
 // Error 实现标准error接口
 func (e *Error) Error() string {
-	if e.Err != nil {
-		return fmt.Sprintf("%s: %s: %v", e.Type, e.Message, e.Err)
-	}
+	// 生产环境不输出内部错误详情
 	return fmt.Sprintf("%s: %s", e.Type, e.Message)
 }
 
@@ -130,28 +127,24 @@ func AsError(err error) *Error {
 }
 
 // RecoverPanic 用于从panic中恢复并记录错误
-// 可在goroutine中使用，例如：defer RecoverPanic("后台任务")
 func RecoverPanic(source string) {
 	if r := recover(); r != nil {
-		stackTrace := debug.Stack()
-
-		// 记录错误日志
-		slog.Error("捕获到异常", "error", r, "source", source, "stack_trace", string(stackTrace))
+		// 生产环境只记录必要信息
+		slog.Error("panic recovered", 
+			"source", source,
+			"error", fmt.Sprintf("%v", r))
 	}
 }
 
 // RecoverPanicWithCallback 从panic中恢复，并执行回调函数
-// 适用于需要在panic恢复后执行自定义操作的场景
-func RecoverPanicWithCallback(source string, callback func(err interface{}, stack []byte)) {
+func RecoverPanicWithCallback(source string, callback func(err interface{})) {
 	if r := recover(); r != nil {
-		stackTrace := debug.Stack()
-
-		// 记录错误日志
-		slog.Error("捕获到异常", "error", r, "source", source, "stack_trace", string(stackTrace))
-
-		// 执行回调
+		slog.Error("panic recovered", 
+			"source", source,
+			"error", fmt.Sprintf("%v", r))
+		
 		if callback != nil {
-			callback(r, stackTrace)
+			callback(r)
 		}
 	}
 }

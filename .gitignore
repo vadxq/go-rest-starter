@@ -39,3 +39,5 @@ api/app
 tmp
 
 .DS_Store
+
+build
