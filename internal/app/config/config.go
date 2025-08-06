@@ -116,7 +116,7 @@ func bindEnvVariables() {
 
 	// 数据库配置环境变量
 	viper.BindEnv("app.database.driver", "APP_DB_DRIVER")
-	viper.BindEnv("app.database.host", "APP_DB_HOST") 
+	viper.BindEnv("app.database.host", "APP_DB_HOST")
 	viper.BindEnv("app.database.port", "APP_DB_PORT")
 	viper.BindEnv("app.database.username", "APP_DB_USERNAME")
 	viper.BindEnv("app.database.password", "APP_DB_PASSWORD")
@@ -125,18 +125,18 @@ func bindEnvVariables() {
 	viper.BindEnv("app.database.max_open_conns", "APP_DB_MAX_OPEN_CONNS")
 	viper.BindEnv("app.database.max_idle_conns", "APP_DB_MAX_IDLE_CONNS")
 	viper.BindEnv("app.database.conn_max_lifetime", "APP_DB_CONN_MAX_LIFETIME")
-	
+
 	// Redis配置环境变量
 	viper.BindEnv("app.redis.host", "APP_REDIS_HOST")
 	viper.BindEnv("app.redis.port", "APP_REDIS_PORT")
 	viper.BindEnv("app.redis.password", "APP_REDIS_PASSWORD")
 	viper.BindEnv("app.redis.db", "APP_REDIS_DB")
-	
+
 	// 日志配置环境变量
 	viper.BindEnv("app.log.level", "APP_LOG_LEVEL")
 	viper.BindEnv("app.log.file", "APP_LOG_FILE")
 	viper.BindEnv("app.log.console", "APP_LOG_CONSOLE")
-	
+
 	// JWT配置环境变量
 	viper.BindEnv("app.jwt.secret", "APP_JWT_SECRET")
 	viper.BindEnv("app.jwt.access_token_exp", "APP_JWT_ACCESS_TOKEN_EXP")
@@ -185,6 +185,12 @@ func setDefaults(config *AppConfig) {
 
 // GetDSN 获取数据库连接字符串
 func (c *DatabaseConfig) GetDSN() string {
-	return fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		c.Host, c.Port, c.Username, c.Password, c.DBName, c.SSLMode)
+	// 构建PostgreSQL DSN - 确保dbname参数正确
+	if c.Password == "" {
+		return fmt.Sprintf("host=%s port=%d user=%s dbname=%s sslmode=%s",
+			c.Host, c.Port, c.Username, c.DBName, c.SSLMode)
+	} else {
+		return fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+			c.Host, c.Port, c.Username, c.Password, c.DBName, c.SSLMode)
+	}
 }
